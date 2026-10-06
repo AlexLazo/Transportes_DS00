@@ -36,8 +36,19 @@ def database_url() -> str:
     return url
 
 
+def normalizar_url(url: str) -> str:
+    """Fija el driver de PostgreSQL a psycopg2 (el de requirements.txt).
+
+    Railway entrega `postgresql://` o `postgres://`; sin driver explícito las versiones nuevas de SQLAlchemy
+    pueden elegir `psycopg` (v3), que no está instalado, y la app no arranca."""
+    for esquema in ("postgres://", "postgresql://"):
+        if url.startswith(esquema):
+            return "postgresql+psycopg2://" + url[len(esquema):]
+    return url
+
+
 def make_engine(url: str | None = None):
-    url = url or database_url()
+    url = normalizar_url(url or database_url())
     kwargs = {"future": True}
     if url.startswith("sqlite"):
         Path(RAIZ / "db").mkdir(exist_ok=True)
