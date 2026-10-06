@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}{{ u.ruta }} · {{ fmt_fecha(u.fecha) }}{% endblock %}
+{% block body %}
+<p class="small"><a href="{{ url_for('web.rutas', p=u.periodo) }}">← Rutas no usadas</a></p>
+<h1>{{ u.ruta }} · {{ dia_sem(u.fecha) }} {{ fmt_fecha(u.fecha) }}
+  {% if u.estado == 'NO_USADA' %}<span class="tag bad">No usada</span>
+  {% elif u.estado == 'USADA_CAB' %}<span class="tag info">Usada por cambio de cabecera</span>
+  {% elif u.estado == 'USADA_AJ' %}<span class="tag ok">Usada según el control de AJ</span>
+  {% else %}<span class="tag ok">Usada</span>{% endif %}
+  {% if cerrado %}<span class="tag info">Periodo cerrado</span>{% endif %}</h1>
+
+<div class="grid2">
+  <div>
+    <h2>Datos de la ruta</h2>
+    <dl class="kv card">
+      <dt>Contratista</dt><dd>{{ u.contratista or '—' }}</dd>
+      <dt>Supervisor</dt><dd>{{ u.supervisor or '—' }}</dd>
+      <dt>Categoría</dt><dd>{{ u.categoria or '—' }}</dd>
+      <dt>Lista de rutas</dt><dd>{{ 'Oficial del mes' if u.lista == 'OFICIAL' else 'Tomada del Excel diario (no hay lista oficial de ese mes)' }}</dd>
+      <dt>Nota del Excel diario</dt><dd>{{ u.nota_excel or '—' }}</dd>
+      {% if u.transporte %}<dt>Transporte</dt><dd>{{ u.transporte }}{% if u.cajas %} · {{ '%.0f' | format(u.cajas) }} cajas{% endif %}</dd>{% endif %}
+      {% if transp %}<dt>Cubierta con</dt><dd>transporte creado en {{ transp.ruta_original }} — {{ transp.contratista }}<br><span class="muted small">{{ transp.comentario }}</span></dd>{% endif %}
+      {% if desact %}<dt>Ruta desactivada</dt><dd>{{ desact.estatus }} — {{ desact.comentario or 'sin comentario' }}</dd>{% endif %}
+    </dl>
+
+    <h2>Ausentismos registrados ese día</h2>
+    {% if aus %}
+    <table><thead><tr><th>Contratista</th><th>Motivo</th><th>Comentario</th></tr></thead><tbody>
+      {% for a in aus %}<tr><td>{{ a.contratista }}</td><td>{{ a.motivo }}</td><td>{{ a.comentario or '' }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">Ninguno en el archivo de Ausentismos.</p>{% endif %}
+
+    <h2>Contexto (±13 días)</h2>
+    <div class="card" style="display:flex;gap:3px;flex-wrap:wrap">
+      {% for h in historial %}
+        <a href="{{ url_for('web.ruta_detalle', fecha=h.fecha.isoformat(), ruta=u.ruta) }}"
+           class="cell {{ {'USADA':'u','USADA_CAB':'c','USADA_AJ':'u','NO_USADA':'n'}[h.estado] }}" style="{{ 'outline:2px solid var(--ink)' if h.fecha == u.fecha }}"
+           title="{{ fmt_fecha(h.fecha) }}: {{ h.estado }}"></a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    {% if u.estado == 'NO_USADA' %}
+    <h2>Justificación</h2>
+    <div class="card">
+      {% if u.j_id %}
+        <p class="small muted">Registrada por {{ u.creado_por }} el {{ u.creado_en.strftime('%d/%m/%Y %H:%M') }}{% if u.actualizado_por %} · editada por {{ u.actualizado_por }} el {{ u.actualizado_en.strftime('%d/%m/%Y %H:%M') }}{% endif %} · origen: {{ 'tomada de los Excel' if u.origen == 'EXCEL' else 'captura manual' }}</p>
+      {% elif sug and editable %}
+        <div class="flash warn small">Los Excel ya dicen algo: <strong>{{ sug_nombre[sug[0]] }}</strong> ({{ sug[2] }}). Revisa y guarda para confirmarlo.</div>
+      {% endif %}
+      {% if editable %}
+      <form method="post" action="{{ url_for('web.justificar', fecha=u.fecha.isoformat(), ruta=u.ruta) }}" class="form-row">
+        {{ csrf() }}
+        <div><label for="motivo_id">¿Por qué no se usó?</label>
+          <select id="motivo_id" name="motivo_id" required style="width:100%">
+            <option value="">— elige un motivo —</option>
+            {% for m in motivos %}<option value="{{ m.id }}" {{ 'selected' if (u.motivo_id == m.id) or (not u.j_id and sug and sug[0] == m.id) }}>{{ m.nombre }}{{ ' (exige evidencia)' if m.requiere_evidencia }}</option>{% endfor %}
+          </select></div>
+        <div><label for="detalle">Detalle</label>
+          <textarea id="detalle" name="detalle" placeholder="Qué pasó, quién lo autorizó, número de incapacidad, etc.">{{ u.detalle if u.j_id else (sug[1] if sug else '') }}</textarea></div>
+        <div style="display:flex;gap:.5rem"><button class="btn primary">Guardar justificación</button></div>
+      </form>
+      {% if u.j_id %}
+      <form method="post" action="{{ url_for('web.borrar_justificacion', fecha=u.fecha.isoformat(), ruta=u.ruta) }}" style="margin-top:.6rem"
+            onsubmit="return confirm('¿Eliminar la justificación y sus evidencias?')">{{ csrf() }}<button class="btn sm danger">Eliminar justificación</button></form>
+      {% endif %}
+      {% elif u.j_id %}
+        <dl class="kv"><dt>Motivo</dt><dd>{{ sug_nombre.get(u.motivo_id) or u.motivo_id }}</dd><dt>Detalle</dt><dd>{{ u.detalle or '—' }}</dd></dl>
+      {% else %}<p class="muted">Sin justificación. {{ 'El periodo está cerrado.' if cerrado else 'Tu rol es de solo consulta.' }}</p>{% endif %}
+    </div>
+
+    <h2>Evidencias</h2>
+    <div class="card">
+      {% for e in evid %}
+        <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem">
+          <a href="{{ url_for('web.ver_evidencia', eid=e.id) }}" target="_blank" rel="noopener">{{ e.nombre_original }}</a>
+          <span class="muted small">{{ (e.tam / 1024) | round(0) | int }} KB · {{ e.subido_por }} · {{ e.subido_en.strftime('%d/%m/%Y') }}</span>
+          {% if editable %}<form method="post" action="{{ url_for('web.borrar_evidencia', eid=e.id) }}" style="margin-left:auto" onsubmit="return confirm('¿Eliminar este archivo?')">{{ csrf() }}<button class="btn sm danger">Quitar</button></form>{% endif %}
+        </div>
+      {% else %}<p class="muted" style="margin-top:0">Sin archivos adjuntos.</p>{% endfor %}
+      {% if editable and u.j_id %}
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('web.subir_evidencia', fecha=u.fecha.isoformat(), ruta=u.ruta) }}" style="margin-top:.8rem">
+        {{ csrf() }}<input type="file" name="archivo" required> <button class="btn sm">Adjuntar</button>
+        <div class="muted small">PDF, imagen, Word/Excel, correo (.eml/.msg). Máx. 12 MB.</div>
+      </form>
+      {% elif editable %}<p class="muted small">Guarda primero la justificación para poder adjuntar evidencia.</p>{% endif %}
+    </div>
+    {% else %}
+      <h2>Justificación</h2><p class="muted">La ruta sí tuvo transporte ese día; no necesita justificación.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

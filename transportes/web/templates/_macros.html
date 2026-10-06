@@ -1,0 +1,28 @@
+{% macro selector_periodo(periodos, p, extra=none) %}
+<form method="get" class="noprint">
+  {% for k, v in request.args.items() if k not in ('p', 'pg') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <label for="p" class="muted" style="margin:0">Periodo</label>
+  <select id="p" name="p" onchange="this.form.submit()">
+    {% for x in periodos %}<option value="{{ x }}" {{ 'selected' if x == p }}>{{ periodo_label(x) }}</option>{% endfor %}
+  </select>
+  <noscript><button class="btn sm">Ver</button></noscript>
+</form>
+{% endmacro %}
+
+{% macro paginador(pg, paginas, total) %}
+{% if paginas > 1 %}
+<div class="pager noprint">
+  {% if pg > 1 %}<a class="btn sm" href="{{ qs(pg=pg-1) }}">← Anterior</a>{% endif %}
+  <span class="muted">Página {{ pg }} de {{ paginas }} · {{ total }} registros</span>
+  {% if pg < paginas %}<a class="btn sm" href="{{ qs(pg=pg+1) }}">Siguiente →</a>{% endif %}
+</div>
+{% else %}<div class="muted small" style="margin:.6rem 0">{{ total }} registros</div>{% endif %}
+{% endmacro %}
+
+{% macro csrf() %}<input type="hidden" name="_csrf" value="{{ csrf_token() }}">{% endmacro %}
+
+{% macro pct(v) %}{% if v is none %}—{% else %}{{ '%.1f' % v }}%{% endif %}{% endmacro %}
+
+{% macro th_orden(label, clave, orden, dir, cls='') %}
+<th class="{{ cls }}"><a class="orden" href="{{ qs(orden=clave, dir=('asc' if orden == clave and dir == 'desc' else 'desc')) }}">{{ label }}{% if orden == clave %} <span aria-hidden="true">{{ '▲' if dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+{% endmacro %}

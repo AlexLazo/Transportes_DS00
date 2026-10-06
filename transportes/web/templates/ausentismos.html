@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo with context %}
+{% block title %}Ausentismos{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Ausentismos · {{ periodo_label(p) }}</h1>
+    <div class="muted">Registros del archivo mensual de Ausentismos.</div></div>
+  {{ selector_periodo(periodos, p) }}
+</div>
+{% if not detalle %}
+  <div class="flash warn">No hay ausentismos cargados para este mes. Si hubo, el archivo del mes aún no se ha llenado o no se ha importado
+  (revisa «Archivos importados»).</div>
+{% endif %}
+<div class="grid2">
+  <div><h2>Por motivo</h2><table><thead><tr><th>Motivo</th><th class="num">Casos</th></tr></thead><tbody>
+    {% for m in por_motivo %}<tr><td>{{ m.motivo }}</td><td class="num">{{ m.n }}</td></tr>{% endfor %}</tbody></table></div>
+  <div><h2>Por contratista</h2><table><thead><tr><th>Contratista</th><th class="num">Casos</th></tr></thead><tbody>
+    {% for m in por_ct %}<tr><td>{{ m.contratista }}</td><td class="num">{{ m.n }}</td></tr>{% endfor %}</tbody></table></div>
+</div>
+<h2>Detalle</h2>
+<div class="tablewrap"><table>
+  <thead><tr><th>Fecha</th><th>Ruta</th><th>Contratista</th><th>Motivo</th><th class="num">Tripulación</th><th>¿Se usó la ruta?</th><th>Comentario</th></tr></thead>
+  <tbody>
+  {% for a in detalle %}
+    <tr><td class="nowrap">{{ fmt_fecha(a.fecha) }}</td><td>
+      {% if a.ruta %}<a href="{{ url_for('web.ruta_detalle', fecha=a.fecha.isoformat(), ruta=a.ruta) }}">{{ a.ruta }}</a>{% else %}—{% endif %}</td>
+      <td>{{ a.contratista or '—' }}</td><td>{{ a.motivo or '—' }}</td><td class="num">{{ a.tripulacion or '' }}</td>
+      <td>{% if a.uso == 'NO_USADA' %}<span class="tag bad">No usada</span>{% elif a.uso %}<span class="tag ok">Usada</span>{% else %}<span class="muted small">no es ruta fija / sin dato</span>{% endif %}</td>
+      <td class="small">{{ a.comentario or '' }}</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+{% endblock %}

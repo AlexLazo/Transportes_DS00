@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión{% endblock %}
+{% block anon %}
+<div class="login">
+  <h1>Control de Transportes</h1>
+  <p class="muted">CD Soyapango · DS00</p>
+  <form method="post" class="card form-row">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div><label for="usuario">Usuario</label><input id="usuario" name="usuario" type="text" autocomplete="username" autofocus required style="width:100%"></div>
+    <div><label for="clave">Contraseña</label><input id="clave" name="clave" type="password" autocomplete="current-password" required style="width:100%"></div>
+    <button class="btn primary">Entrar</button>
+  </form>
+</div>
+{% endblock %}

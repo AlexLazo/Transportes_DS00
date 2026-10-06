@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo, csrf with context %}
+{% block title %}Días operativos{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Días operativos · {{ periodo_label(p) }}</h1>
+    <div class="muted">Solo los días operativos cuentan para evaluar el uso de rutas. Un día con menos del 40% del volumen normal del mes se marca solo
+      como «bajo volumen»; si fue feriado, paro o simplemente no hubo operación, confírmalo o corrígelo aquí.</div></div>
+  {{ selector_periodo(periodos, p) }}
+</div>
+<div class="tablewrap"><table>
+  <thead><tr><th>Fecha</th><th class="num">Transportes</th><th class="num">Rutas no usadas</th><th>Cuenta como</th><th>Nota</th><th></th></tr></thead>
+  <tbody>
+  {% for d in lista %}
+    <tr><td class="nowrap">{{ dia_sem(d.fecha) }} {{ fmt_fecha(d.fecha) }}</td><td class="num">{{ d.transportes }}</td>
+      <td class="num">{{ d.no_usadas or 0 }} / {{ d.total or 0 }}</td>
+      <td>{% if d.efectivo %}<span class="tag ok">Operativo</span>{% else %}<span class="tag off">No operativo</span>{% endif %}
+        {% if d.manual is not none %}<span class="tag info">ajuste manual</span>{% elif not d.auto_operativo %}<span class="tag warn">bajo volumen</span>{% endif %}</td>
+      <td class="small">{{ d.nota or '' }}</td>
+      <td class="nowrap">
+        {% if puede('captura') and not cerrado %}
+        <form method="post" style="display:inline-flex;gap:.3rem">{{ csrf() }}<input type="hidden" name="p" value="{{ p }}"><input type="hidden" name="fecha" value="{{ d.fecha.isoformat() }}">
+          <input type="text" name="nota" placeholder="Motivo (feriado, paro…)" value="{{ d.nota or '' }}" style="width:170px">
+          <button class="btn sm" name="operativo" value="{{ 0 if d.efectivo else 1 }}">{{ 'Marcar no operativo' if d.efectivo else 'Marcar operativo' }}</button>
+          {% if d.manual is not none %}<button class="btn sm" name="quitar" value="1">Volver a automático</button>{% endif %}
+        </form>{% endif %}
+      </td></tr>
+  {% endfor %}
+  </tbody></table></div>
+{% endblock %}

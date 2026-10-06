@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo with context %}
+{% block title %}Hallazgos{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Hallazgos · {{ periodo_label(p) }}</h1>
+    <div class="muted">Controles automáticos sobre los Excel. Lo que aquí aparece es lo que un auditor encontraría primero.</div></div>
+  {{ selector_periodo(periodos, p) }}
+</div>
+{% for h in hall %}
+<details class="hall" id="{{ h.codigo }}" {{ 'open' if h.cantidad and h.severidad == 'alta' and loop.index <= 2 }}>
+  <summary>
+    {% if not h.cantidad %}<span class="tag ok">OK</span>{% elif h.severidad == 'info' %}<span class="tag info">Info</span>{% elif h.severidad == 'alta' %}<span class="tag bad">Grave</span>{% else %}<span class="tag warn">Revisar</span>{% endif %}
+    <strong>{{ h.titulo }}</strong><span class="cnt">{{ h.cantidad }}</span>
+  </summary>
+  <div class="body">
+    <p class="muted small">{{ h.ayuda }}</p>
+    {% if h.cantidad %}
+      <div class="tablewrap"><table>
+        <thead><tr>{% for c in h.cols %}<th>{{ c | replace('_', ' ') }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for f in h.filas %}<tr>{% for c in h.cols %}
+          <td>{% set v = f[c] %}{% if v is none %}—{% elif v.strftime is defined %}{{ fmt_fecha(v) }}{% else %}{{ v }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table></div>
+      {% if h.cantidad > h.filas | length %}<p class="muted small">Se muestran {{ h.filas | length }} de {{ h.cantidad }}. Descarga el CSV para ver todo.</p>{% endif %}
+      <p class="noprint"><a class="btn sm" href="{{ url_for('web.export_hallazgos', p=p, c=h.codigo) }}">Descargar CSV</a></p>
+    {% endif %}
+  </div>
+</details>
+{% endfor %}
+<script>
+  // al llegar con #codigo (desde "Para explicar") abre ese hallazgo
+  (function () { var d = document.getElementById(location.hash.slice(1)); if (d && d.tagName === 'DETAILS') { d.open = true; d.scrollIntoView(); } })();
+</script>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import paginador with context %}
+{% block title %}Bitácora{% endblock %}
+{% block body %}
+<h1>Bitácora</h1>
+<p class="muted">Registro de quién hizo qué y cuándo. No se puede editar ni borrar desde la app.</p>
+<form method="get" class="card" style="display:flex;gap:.6rem;align-items:center;margin-bottom:.8rem">
+  <select name="u" onchange="this.form.submit()" aria-label="Usuario"><option value="">Todos los usuarios</option>{% for x in usuarios %}<option {{ 'selected' if x == u }}>{{ x }}</option>{% endfor %}</select>
+  <select name="a" onchange="this.form.submit()" aria-label="Acción"><option value="">Todas las acciones</option>{% for x in acciones %}<option {{ 'selected' if x == a }}>{{ x }}</option>{% endfor %}</select>
+  <a class="btn" href="{{ url_for('web.bitacora') }}">Limpiar</a>
+</form>
+<div class="tablewrap"><table class="no-sort">
+  <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Sobre</th><th>Detalle</th><th>IP</th></tr></thead>
+  <tbody>{% for b in lista %}
+    <tr><td class="nowrap">{{ b.ts.strftime('%d/%m/%Y %H:%M:%S') }}</td><td>{{ b.usuario or '—' }}</td><td>{{ b.accion }}</td>
+      <td class="small">{{ b.entidad or '' }} {{ b.entidad_id or '' }}</td><td class="small">{{ b.detalle or '' }}</td><td class="small">{{ b.ip or '' }}</td></tr>
+  {% endfor %}</tbody></table></div>
+{{ paginador(pg, paginas, total) }}
+{% endblock %}

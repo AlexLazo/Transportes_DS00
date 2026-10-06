@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Usuarios{% endblock %}
+{% block body %}
+<h1>Usuarios</h1>
+<p class="muted"><strong>Admin</strong>: todo, incluido cierre de mes y usuarios. <strong>Captura</strong>: justifica rutas y adjunta evidencias. <strong>Consulta</strong>: solo ve (ideal para el auditor).</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+  <tbody>{% for x in lista %}
+    <tr><td>{{ x.usuario }}</td><td>{{ x.nombre }}</td>
+      <td><form method="post" style="display:inline-flex;gap:.3rem">{{ csrf() }}<input type="hidden" name="accion" value="rol"><input type="hidden" name="id" value="{{ x.id }}">
+        <select name="rol" onchange="this.form.submit()" {{ 'disabled' if x.id == usuario.id }} aria-label="Rol">{% for r in ['admin','captura','consulta'] %}<option {{ 'selected' if x.rol == r }}>{{ r }}</option>{% endfor %}</select></form></td>
+      <td>{% if x.activo %}<span class="tag ok">Activo</span>{% else %}<span class="tag off">Inactivo</span>{% endif %}</td>
+      <td class="nowrap">
+        <form method="post" style="display:inline-flex;gap:.3rem">{{ csrf() }}<input type="hidden" name="id" value="{{ x.id }}">
+          <input type="password" name="clave" placeholder="Nueva contraseña" autocomplete="new-password" style="width:150px">
+          <button class="btn sm" name="accion" value="clave">Cambiar</button>
+          {% if x.id != usuario.id %}<button class="btn sm" name="accion" value="{{ 'desactivar' if x.activo else 'activar' }}">{{ 'Desactivar' if x.activo else 'Activar' }}</button>{% endif %}</form></td></tr>
+  {% endfor %}</tbody></table></div>
+<h2>Nuevo usuario</h2>
+<form method="post" class="card form-row">{{ csrf() }}<input type="hidden" name="accion" value="crear">
+  <div><label>Nombre</label><input type="text" name="nombre" required style="width:100%"></div>
+  <div><label>Usuario</label><input type="text" name="usuario" required autocomplete="off" style="width:100%"></div>
+  <div><label>Contraseña inicial (mínimo 10 caracteres)</label><input type="password" name="clave" required autocomplete="new-password" style="width:100%"></div>
+  <div><label>Rol</label><select name="rol"><option>consulta</option><option>captura</option><option>admin</option></select></div>
+  <button class="btn primary">Crear usuario</button>
+</form>
+{% endblock %}

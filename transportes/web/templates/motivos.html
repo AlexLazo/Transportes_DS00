@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Motivos{% endblock %}
+{% block body %}
+<h1>Motivos de no uso</h1>
+<p class="muted">Catálogo que aparece al justificar una ruta. Un motivo que exige evidencia deja la ruta marcada como «falta evidencia» hasta adjuntar el soporte.
+Los motivos usados no se borran; solo se desactivan.</p>
+<table><thead><tr><th>Motivo</th><th class="num">Usos</th><th>Exige evidencia</th><th>Activo</th><th></th></tr></thead><tbody>
+{% for m in lista %}
+  <tr><form method="post">{{ csrf() }}<input type="hidden" name="id" value="{{ m.id }}">
+    <td>{{ m.nombre }}</td><td class="num">{{ m.usos }}</td>
+    <td><input type="checkbox" name="requiere_evidencia" value="1" {{ 'checked' if m.requiere_evidencia }}></td>
+    <td><input type="checkbox" name="activo" value="1" {{ 'checked' if m.activo }}></td>
+    <td><button class="btn sm">Guardar</button></td></form></tr>
+{% endfor %}</tbody></table>
+<h2>Nuevo motivo</h2>
+<form method="post" class="card" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">{{ csrf() }}<input type="hidden" name="accion" value="crear">
+  <input type="text" name="nombre" placeholder="Nombre del motivo" required style="min-width:280px">
+  <label style="font-weight:400;margin:0"><input type="checkbox" name="requiere_evidencia" value="1"> Exige evidencia</label>
+  <button class="btn primary">Agregar</button></form>
+{% endblock %}

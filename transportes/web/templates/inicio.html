@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo, pct with context %}
+{% block title %}Tablero{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Tablero · {{ periodo_label(p) }}</h1>
+    <div class="muted">
+      {{ k.dias }} días operativos con archivo · {{ k.rutas }} rutas activas evaluadas
+      {% if cerrado %}<span class="tag info">Periodo cerrado</span>{% endif %}
+    </div></div>
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+    {{ selector_periodo(periodos, p) }}
+    <form method="get" class="noprint">
+      <input type="hidden" name="p" value="{{ p }}">
+      <select name="cat" onchange="this.form.submit()" aria-label="Categoría">
+        <option value="">GC + AJ</option>
+        <option value="GC" {{ 'selected' if request.args.get('cat') == 'GC' }}>Solo GC (cerveza/gaseosa)</option>
+        <option value="AJ" {{ 'selected' if request.args.get('cat') == 'AJ' }}>Solo AJ (agua/jugos)</option>
+      </select>
+    </form>
+  </div>
+</div>
+
+{% if cambios %}
+<div class="flash error"><strong>Atención:</strong> después de cerrar este mes cambiaron archivos de respaldo:
+  {% for a, s in cambios %}<br>• {{ a }} — {{ s }}{% endfor %}</div>
+{% endif %}
+
+<div class="kpis">
+  <div class="kpi {{ 'ok' if k.pct_uso and k.pct_uso >= 90 else 'warn' }}"><div class="l">Uso de rutas fijas</div>
+    <div class="v">{{ pct(k.pct_uso) }}</div><div class="s">{{ k.usadas }} de {{ k.total }} ruta-días · {{ k.por_cabecera }} vía cambio de cabecera</div></div>
+  <div class="kpi"><div class="l">Rutas no usadas</div><div class="v">{{ k.no_usadas }}</div>
+    <div class="s">ruta activa sin ningún transporte ese día</div></div>
+  <div class="kpi {{ 'bad' if k.pendientes else 'ok' }}"><div class="l">Sin justificar</div><div class="v">{{ k.pendientes }}</div>
+    <div class="s">{{ pct(k.pct_just) }} justificado</div></div>
+  <div class="kpi"><div class="l">Dummys pagadas</div><div class="v">{{ dum.dummys or 0 }}</div>
+    <div class="s">Q1: {{ dum.q1 or 0 }} · Q2: {{ dum.q2 or 0 }}</div></div>
+  <div class="kpi {{ 'bad' if dum.sin_firma else '' }}"><div class="l">Dummys sin firma</div><div class="v">{{ dum.sin_firma or 0 }}</div>
+    <div class="s">columna FIRMADA vacía</div></div>
+  <div class="kpi {{ 'bad' if n_hall else 'ok' }}"><div class="l">Casos graves en hallazgos</div><div class="v">{{ n_hall }}</div>
+    <div class="s"><a href="{{ url_for('web.calidad', p=p) }}">ver detalle</a></div></div>
+</div>
+
+<div class="grid2">
+  <div>
+    <h2>Rutas no usadas por día</h2>
+    <div class="card">
+      <div class="chart" role="img" aria-label="Rutas usadas y no usadas por día">
+        {% set mx = (por_dia | map(attribute='total') | max) if por_dia else 1 %}
+        {% for d in por_dia %}
+          <a class="col" href="{{ url_for('web.rutas', p=p, estado='todas') }}" title="{{ fmt_fecha(d.fecha) }}: {{ d.no_usadas }} no usadas de {{ d.total }}">
+            <b style="height:{{ (100 * d.no_usadas / mx) | round(1) }}%"></b>
+            <i style="height:{{ (100 * (d.total - d.no_usadas) / mx) | round(1) }}%"></i>
+          </a>
+        {% endfor %}
+      </div>
+      <div class="muted small">Cada barra es un día: <span style="color:var(--ok)">verde = usadas</span>, <span style="color:var(--bad)">rojo = no usadas</span>.</div>
+    </div>
+  </div>
+  <div>
+    <h2>Contratistas con más pendientes</h2>
+    <table>
+      <thead><tr><th>Contratista</th><th class="num">No usadas</th><th class="num">Pendientes</th></tr></thead>
+      <tbody>
+      {% for c in por_ct %}
+        <tr><td><a href="{{ url_for('web.rutas', p=p, ct=c.contratista, estado='pendientes') }}">{{ c.contratista }}</a></td>
+          <td class="num">{{ c.no_usadas }}</td><td class="num">{% if c.pendientes %}<span class="tag bad">{{ c.pendientes }}</span>{% else %}<span class="tag ok">0</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<h2>Agua y jugos (AJ)</h2>
+{% if ajuso.total or aj.total %}
+<div class="kpis">
+  <div class="kpi {{ 'ok' if ajuso.pct_uso and ajuso.pct_uso >= 90 else 'warn' }}"><div class="l">Uso de rutas AJ</div><div class="v">{{ pct(ajuso.pct_uso) }}</div>
+    <div class="s">{{ ajuso.usadas }} de {{ ajuso.total }} ruta-días</div></div>
+  <div class="kpi {{ 'bad' if ajuso.pendientes else 'ok' }}"><div class="l">AJ sin justificar</div><div class="v">{{ ajuso.pendientes }}</div>
+    <div class="s"><a href="{{ url_for('web.rutas', p=p, cat='AJ') }}">justificar</a></div></div>
+  <div class="kpi"><div class="l">Cargas del control</div><div class="v">{{ aj.total }}</div><div class="s">{{ aj.dummys }} dummys</div></div>
+  <div class="kpi"><div class="l">Recargas + reposiciones</div><div class="v">{{ aj.recargas + aj.reposiciones }}</div><div class="s"><a href="{{ url_for('web.aj', p=p) }}">ver AJ completo</a></div></div>
+</div>
+{% else %}<p class="muted">Sin datos de AJ en este mes.</p>{% endif %}
+
+<h2>Pagos del periodo</h2>
+<div class="kpis">
+  <div class="kpi"><div class="l">Excepciones</div><div class="v">{{ dum.excepciones or 0 }}</div></div>
+  <div class="kpi"><div class="l">Recargas</div><div class="v">{{ dum.recargas or 0 }}</div></div>
+  <div class="kpi"><div class="l">Ausentismos registrados</div><div class="v">{{ aus }}</div><div class="s">{{ aus_r.explican }} explican una ruta no usada · <a href="{{ url_for('web.matriz', p=p) }}">ver en la matriz</a></div></div>
+  <div class="kpi"><div class="l">Filas en Excepciones</div><div class="v">{{ dum.filas or 0 }}</div>
+    <div class="s"><a href="{{ url_for('web.dummies', p=p) }}">ver por contratista</a></div></div>
+</div>
+{% endblock %}

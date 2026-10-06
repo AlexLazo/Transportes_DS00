@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Archivos importados{% endblock %}
+{% block body %}
+<h1>Archivos importados</h1>
+<p class="muted">Cada Excel que la app leyó, qué encontró en él y por qué algunos no cuentan. Para cargar archivos nuevos corre
+<code>python importar_local.py</code> en tu PC (ver LEEME.md).</p>
+
+<div class="kpis">
+  {% for r in resumen %}<div class="kpi {{ 'bad' if r.estado == 'ERROR' else ('warn' if r.estado in ('DUPLICADO',) else '') }}">
+    <div class="l">{{ r.tipo }} · {{ r.estado }}</div><div class="v">{{ r.n }}</div></div>{% endfor %}
+</div>
+
+<h2>Últimas importaciones</h2>
+<table><thead><tr><th>Inicio</th><th>Fin</th><th>Estado</th><th>Origen</th></tr></thead><tbody>
+{% for i in ultimas %}<tr><td>{{ i.inicio.strftime('%d/%m/%Y %H:%M') if i.inicio }}</td><td>{{ i.fin.strftime('%H:%M') if i.fin }}</td>
+  <td><span class="tag {{ 'ok' if i.estado == 'OK' else ('bad' if i.estado == 'ERROR' else 'warn') }}">{{ i.estado }}</span></td><td>{{ i.origen }}</td></tr>{% endfor %}
+</tbody></table>
+
+<h2>Archivos</h2>
+<div class="tablewrap"><table>
+  <thead><tr><th>Estado</th><th>Tipo</th><th>Archivo</th><th>Contenido</th><th class="num">Filas</th><th>Observación</th></tr></thead>
+  <tbody>
+  {% for a in lista %}
+    <tr><td><span class="tag {{ {'OK':'ok','ERROR':'bad','DUPLICADO':'warn','OMITIDO':'off'}[a.estado] }}">{{ a.estado }}</span></td>
+      <td>{{ a.tipo }}</td><td class="small">{{ a.ruta }}</td>
+      <td class="nowrap">{% if a.fecha %}{{ fmt_fecha(a.fecha) }}{% elif a.periodo %}{{ periodo_label(a.periodo) }}{% endif %}</td>
+      <td class="num">{{ a.filas }}</td><td class="small">{{ a.mensaje or '' }}</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+{% endblock %}

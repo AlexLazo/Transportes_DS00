@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Respaldos{% endblock %}
+{% block body %}
+<h1>Respaldos</h1>
+<p class="muted">Una copia de seguridad que puedes guardar y restaurar en cualquier otra base (por ejemplo, subir lo que tienes en tu PC a Railway).
+Base actual: <strong>{{ 'PostgreSQL' if motor == 'postgresql' else 'SQLite (local)' }}</strong>.</p>
+
+<div class="grid2" style="grid-template-columns:1fr 1fr">
+  <div class="card">
+    <h3 style="margin-top:0">Solo lo de la app <span class="tag ok">recomendado a diario</span></h3>
+    <p class="small muted">Lo que <strong>no se puede regenerar desde los Excel</strong>: justificaciones, evidencias, usuarios, motivos, ajustes de días, cierres de mes y bitácora. Pesa muy poco.</p>
+    <ul class="ejemplos">
+      <li>{{ conteos.justificaciones }} justificaciones · {{ conteos.evidencias }} evidencias</li>
+      <li>{{ conteos.usuarios }} usuarios · {{ conteos.cierres }} cierres · {{ conteos.bitacora }} registros de bitácora</li>
+    </ul>
+    <form method="post" action="{{ url_for('web.respaldo_descargar') }}">{{ csrf() }}<input type="hidden" name="alcance" value="app">
+      <button class="btn primary">Descargar respaldo de la app</button></form>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Completo</h3>
+    <p class="small muted">Todo lo anterior más los datos importados de los Excel (SAP, rutas, dummys, ausentismos, AJ). Sirve para clonar la base entera en otro lugar.</p>
+    <form method="post" action="{{ url_for('web.respaldo_descargar') }}">{{ csrf() }}<input type="hidden" name="alcance" value="completo">
+      <button class="btn">Descargar respaldo completo</button></form>
+  </div>
+</div>
+
+<h2>Cómo restaurar</h2>
+<div class="card small">
+  <p style="margin-top:0">Restaurar se hace desde tu PC (no desde la web) para evitar que un clic pise datos por accidente. El archivo se verifica antes de tocar nada.</p>
+  <pre>python respaldo.py verificar  respaldo_transportes_AAAAMMDD_HHMM.zip
+python respaldo.py restaurar respaldo_transportes_AAAAMMDD_HHMM.zip --db "&lt;URL pública de PostgreSQL de Railway&gt;"</pre>
+  <p style="margin-bottom:0">Si la base de destino ya tiene datos, la restauración se niega salvo que agregues <code>--reemplazar</code>.
+  Un respaldo hecho en SQLite se restaura en PostgreSQL y al revés.</p>
+</div>
+
+<h2>Buenas prácticas</h2>
+<ul class="small">
+  <li>Descarga el respaldo <strong>de la app</strong> al terminar cada jornada de captura y el <strong>completo</strong> al cerrar cada mes.</li>
+  <li>Guarda los archivos <strong>fuera</strong> del servidor (tu PC, SharePoint o un disco externo): un respaldo que vive en el mismo lugar que la base no protege de perderla.</li>
+  <li>Haz un respaldo antes de actualizar la app o de reabrir un mes.</li>
+</ul>
+
+<h2>Últimos respaldos descargados desde la app</h2>
+<table><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Detalle</th></tr></thead><tbody>
+{% for u in ultimos %}<tr><td class="nowrap">{{ u.ts.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ u.usuario }}</td><td class="small">{{ u.detalle }}</td></tr>
+{% else %}<tr><td colspan="3" class="muted">Aún no se ha descargado ninguno desde la app.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

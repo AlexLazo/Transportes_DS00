@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo with context %}
+{% from "_matriz.html" import matriz with context %}
+{% block title %}Matriz ruta × día{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Matriz ruta × día · {{ periodo_label(p) }}</h1>
+    <div class="muted">Una fila por ruta; la letra dentro del cuadro dice qué pasó. Haz clic en un cuadro para ver el detalle o justificarlo.</div></div>
+  <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+    {{ selector_periodo(periodos, p) }}
+    <form method="get" class="noprint">
+      <input type="hidden" name="p" value="{{ p }}">
+      {% if not solo_inc %}<input type="hidden" name="todas" value="1">{% endif %}
+      <select name="cat" onchange="this.form.submit()" aria-label="Categoría">
+        <option value="">GC + AJ</option>
+        <option value="GC" {{ 'selected' if request.args.get('cat') == 'GC' }}>Solo GC</option>
+        <option value="AJ" {{ 'selected' if request.args.get('cat') == 'AJ' }}>Solo AJ (agua y jugos)</option>
+      </select>
+      <select name="ct" onchange="this.form.submit()" aria-label="Contratista" style="max-width:220px">
+        <option value="">Todos los contratistas</option>
+        {% for c in contratistas %}<option {{ 'selected' if request.args.get('ct') == c }}>{{ c }}</option>{% endfor %}
+      </select>
+    </form>
+    <a class="btn noprint" href="{{ qs(todas='1' if solo_inc else None) }}">{{ 'Mostrar todas las rutas' if solo_inc else 'Solo rutas con incidencias' }}</a>
+  </div>
+</div>
+{{ matriz(m) }}
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pct with context %}
+{% from "_matriz.html" import matriz, leyenda with context %}
+{% block title %}Reporte {{ periodo_label(p) }}{% endblock %}
+{% macro fila_uso(nombre, u) %}
+<tr><td>{{ nombre }}</td><td class="num">{{ u.rutas }}</td><td class="num">{{ u.dias }}</td><td class="num">{{ u.total }}</td>
+  <td class="num">{{ u.usadas }} ({{ pct(u.pct_uso) }})</td><td class="num">{{ u.no_usadas }}</td><td class="num">{{ u.justificadas }}</td>
+  <td class="num"><strong>{{ u.pendientes }}</strong></td></tr>
+{% endmacro %}
+{% block body %}
+<div class="top noprint"><div class="muted">Vista pensada para imprimir o guardar como PDF (el navegador conserva los colores).</div>
+  <button class="btn primary" onclick="window.print()">Imprimir / guardar como PDF</button></div>
+<h1>Reporte de control · CD Soyapango (DS00)</h1>
+<p class="muted">Periodo: <strong>{{ periodo_label(p) }}</strong> · generado el {{ ahora.strftime('%d/%m/%Y %H:%M') }} por {{ usuario.nombre }}
+{% if cierre %} · <strong>Periodo cerrado</strong> por {{ cierre.cerrado_por }} el {{ cierre.cerrado_en.strftime('%d/%m/%Y') }}{% else %} · periodo abierto (cifras provisionales){% endif %}</p>
+
+<h2>1. Uso de rutas fijas</h2>
+<table>
+  <thead><tr><th></th><th class="num">Rutas</th><th class="num">Días</th><th class="num">Ruta-días</th><th class="num">Con transporte</th><th class="num">Sin transporte</th><th class="num">Justificadas</th><th class="num">Pendientes</th></tr></thead>
+  <tbody>{{ fila_uso('GC · cerveza y gaseosa', gc) }}{{ fila_uso('AJ · agua y jugos', ajuso) }}</tbody>
+</table>
+{% if ajuso.por_control_aj %}<p class="muted small">{{ ajuso.por_control_aj }} ruta-días de AJ cuentan como usadas por el control de la supervisora aunque SAP no las muestre.</p>{% endif %}
+
+<h2>2. Matriz de rutas con incidencias · GC</h2>
+{{ leyenda() }}
+{{ matriz(mg, false) }}
+
+<h2>3. Matriz de rutas con incidencias · AJ</h2>
+{{ matriz(ma, false) }}
+
+<h2>4. Ausentismos</h2>
+<table><tbody>
+  <tr><td>Ausentismos registrados (ruta-días)</td><td class="num">{{ aus.total }}</td></tr>
+  <tr><td>Explican una ruta que no salió</td><td class="num">{{ aus.explican }}</td></tr>
+  <tr><td>La ruta salió igual (cubierta por otro personal)</td><td class="num">{{ aus.cubiertos }}</td></tr>
+  <tr><td>Sin ruta en la lista del mes</td><td class="num">{{ aus.sin_ruta }}</td></tr>
+</tbody></table>
+
+<h2>5. Dummys, excepciones y recargas por contratista (GC)</h2>
+<table><thead><tr><th>Contratista</th><th class="num">Dummys Q1</th><th class="num">Dummys Q2</th><th class="num">Total dummys</th><th class="num">Excepciones</th><th class="num">Recargas</th></tr></thead><tbody>
+{% for r in resumen %}<tr><td>{{ r.contratista }}</td><td class="num">{{ r.d1 }}</td><td class="num">{{ r.d2 }}</td><td class="num">{{ r.dummys }}</td><td class="num">{{ r.excepciones }}</td><td class="num">{{ r.recargas }}</td></tr>{% endfor %}
+</tbody></table>
+
+{% if aj.total %}
+<h2>6. Dummys, recargas y reposiciones · AJ (control de la supervisora)</h2>
+<table><thead><tr><th>Transportista</th><th class="num">Dummys Q1</th><th class="num">Dummys Q2</th><th class="num">Total dummys</th><th class="num">Recargas</th><th class="num">Reposiciones</th><th class="num">Total cargas</th></tr></thead><tbody>
+{% for t in por_transp %}<tr><td>{{ t.nombre or t.codigo }}</td><td class="num">{{ t.d1 }}</td><td class="num">{{ t.d2 }}</td><td class="num">{{ t.dummys }}</td><td class="num">{{ t.recargas }}</td><td class="num">{{ t.reposiciones }}</td><td class="num">{{ t.total }}</td></tr>{% endfor %}
+</tbody><tfoot><tr><td>Total</td><td class="num">{{ tot.d1 }}</td><td class="num">{{ tot.d2 }}</td><td class="num">{{ tot.dummys }}</td><td class="num">{{ tot.recargas }}</td><td class="num">{{ tot.reposiciones }}</td><td class="num">{{ tot.total }}</td></tr></tfoot></table>
+<p class="muted small">Recolecciones del mes: {{ aj.recolecciones }} ({{ '%.0f' | format(aj.envases) }} envases, {{ '%.0f' | format(aj.racks) }} racks).
+  Cruce contra SAP: {{ ctl.dias_sin_control | length }} días con cargas sin registrar, {{ ctl.sin_sap | length }} cargas del control que no están en SAP,
+  {{ ctl.no_verificables | length }} recargas/reposiciones que no se pueden comprobar.</p>
+{% endif %}
+
+<h2>7. Hallazgos de control</h2>
+<table><thead><tr><th>Control</th><th>Severidad</th><th class="num">Casos</th></tr></thead><tbody>
+{% for h in hall %}<tr><td>{{ h.titulo }}</td><td>{{ h.severidad }}</td><td class="num">{{ h.cantidad }}</td></tr>{% endfor %}
+</tbody></table>
+
+<h2>8. Detalle de rutas fijas sin transporte</h2>
+<table><thead><tr><th>Ruta</th><th>Fecha</th><th>Contratista</th><th>Qué pasó</th><th>Detalle</th><th>Evid.</th></tr></thead><tbody>
+{% for f in detalle %}<tr><td>{{ f.ruta }}</td><td class="nowrap">{{ fmt_fecha(f.fecha) }}</td><td>{{ f.contratista or '' }}</td>
+  <td>{{ f.motivo or ('Ausentismo registrado' if f.hay_aus else ('Nota Excel: ' + f.nota_excel if f.nota_excel else 'SIN EXPLICAR')) }}</td>
+  <td class="small">{{ f.detalle or '' }}</td><td class="num">{{ f.n_evid if f.j_id else '' }}</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Cierre de mes{% endblock %}
+{% block body %}
+<h1>Cierre de mes</h1>
+<p class="muted">Al cerrar un mes se congelan las justificaciones y evidencias, y se guarda la huella de cada Excel que lo respalda.
+Si después alguien modifica uno de esos archivos, la app lo avisa. Reabrir exige escribir el motivo y queda en la bitácora.</p>
+{% for c in lista %}
+<div class="card" style="margin-bottom:.8rem">
+  <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+    <h3 style="margin:0">{{ periodo_label(c.periodo) }}</h3>
+    {% if c.cierre %}<span class="tag info">Cerrado por {{ c.cierre.cerrado_por }} el {{ c.cierre.cerrado_en.strftime('%d/%m/%Y %H:%M') }}</span>
+    {% else %}<span class="tag {{ 'bad' if c.pendientes else 'ok' }}">Abierto · {{ c.pendientes }} sin justificar</span>{% endif %}
+  </div>
+  {% if c.cierre and c.cierre.nota %}<p class="small muted">Nota: {{ c.cierre.nota }}</p>{% endif %}
+  {% for a, s in c.cambios %}<div class="flash error small" style="margin-top:.5rem">{{ a }} — {{ s }}</div>{% endfor %}
+  <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem">
+    {{ csrf() }}<input type="hidden" name="p" value="{{ c.periodo }}">
+    <input type="text" name="nota" placeholder="{{ 'Motivo para reabrir (obligatorio)' if c.cierre else 'Nota del cierre (opcional)' }}" style="min-width:280px">
+    {% if c.cierre %}<button class="btn danger" name="accion" value="reabrir">Reabrir</button>
+    {% else %}
+      {% if c.pendientes %}<label style="font-weight:400;margin:0"><input type="checkbox" name="forzar" value="1"> Cerrar aunque haya {{ c.pendientes }} pendientes</label>{% endif %}
+      <button class="btn primary" name="accion" value="cerrar" onclick="return confirm('¿Cerrar {{ periodo_label(c.periodo) }}?')">Cerrar mes</button>{% endif %}
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

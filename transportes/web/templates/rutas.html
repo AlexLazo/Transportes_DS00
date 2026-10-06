@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo, paginador, csrf, th_orden with context %}
+{% block title %}Rutas no usadas{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Rutas fijas no usadas · {{ periodo_label(p) }}</h1>
+    <div class="muted">Ruta activa del mes sin ningún transporte ese día. Cada una necesita una explicación.
+      {% if cerrado %}<span class="tag info">Periodo cerrado</span>{% endif %}</div></div>
+  {{ selector_periodo(periodos, p) }}
+</div>
+
+<form method="get" class="card noprint" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.8rem">
+  <input type="hidden" name="p" value="{{ p }}">
+  <select name="estado" onchange="this.form.submit()" aria-label="Estado">
+    <option value="pendientes" {{ 'selected' if estado == 'pendientes' }}>Sin justificar</option>
+    <option value="justificadas" {{ 'selected' if estado == 'justificadas' }}>Justificadas</option>
+    <option value="todas" {{ 'selected' if estado == 'todas' }}>Todas</option>
+  </select>
+  <select name="cat" onchange="this.form.submit()" aria-label="Categoría">
+    <option value="">GC + AJ</option>
+    <option value="GC" {{ 'selected' if request.args.get('cat') == 'GC' }}>GC</option>
+    <option value="AJ" {{ 'selected' if request.args.get('cat') == 'AJ' }}>AJ</option>
+  </select>
+  <select name="ct" onchange="this.form.submit()" aria-label="Contratista" style="max-width:260px">
+    <option value="">Todos los contratistas</option>
+    {% for c in contratistas %}<option {{ 'selected' if request.args.get('ct') == c }}>{{ c }}</option>{% endfor %}
+  </select>
+  <input type="search" name="q" value="{{ q }}" placeholder="Buscar ruta (DS0050)">
+  <button class="btn">Filtrar</button>
+  <a class="btn" href="{{ url_for('web.rutas', p=p) }}">Limpiar</a>
+  <a class="btn" style="margin-left:auto" href="{{ url_for('web.export_rutas', p=p, estado=estado, q=q, cat=request.args.get('cat'), ct=request.args.get('ct')) }}">Descargar CSV</a>
+</form>
+
+{% if n_sug and not cerrado and puede('captura') %}
+<form method="post" action="{{ url_for('web.aceptar_sugerencias') }}" class="flash warn noprint"
+      onsubmit="return confirm('Se registrarán {{ n_sug }} justificaciones tomadas de lo que ya dicen los Excel. ¿Continuar?')">
+  {{ csrf() }}<input type="hidden" name="p" value="{{ p }}"><input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="cat" value="{{ request.args.get('cat', '') }}"><input type="hidden" name="ct" value="{{ request.args.get('ct', '') }}">
+  <strong>{{ n_sug }}</strong> pendientes ya tienen explicación en los Excel (nota del día, Ausentismos o ruta desactivada).
+  <button class="btn sm primary" style="margin-left:.5rem">Aceptar todas las sugerencias</button>
+</form>
+{% endif %}
+
+<div class="noprint" style="display:flex;gap:.5rem;margin-bottom:.8rem;align-items:center;flex-wrap:wrap">
+  <a class="btn {{ 'primary' if vista != 'ranking' }}" href="{{ qs(vista=None, orden=None, dir=None) }}">Lista por día</a>
+  <a class="btn {{ 'primary' if vista == 'ranking' }}" href="{{ qs(vista='ranking', orden=None, dir=None) }}">Ranking por ruta (mayor a menor)</a>
+  <span class="muted small">Haz clic en el título de una columna para ordenar.</span>
+</div>
+
+{% if vista == 'ranking' %}
+<div class="tablewrap"><table class="no-sort">
+  <thead><tr>{{ th_orden('Ruta', 'ruta', orden, dir) }}{{ th_orden('Contratista', 'contratista', orden, dir) }}
+    {{ th_orden('Días sin uso', 'no_usadas', orden, dir, 'num') }}{{ th_orden('Sin explicar', 'pendientes', orden, dir, 'num') }}
+    {{ th_orden('Con ausentismo', 'ausentismos', orden, dir, 'num') }}{{ th_orden('Última vez', 'ultima', orden, dir) }}<th></th></tr></thead>
+  <tbody>
+  {% for r in ranking %}
+    <tr><td><strong>{{ r.ruta }}</strong> <span class="muted small">{{ r.categoria or '' }}</span></td><td>{{ r.contratista or '—' }}</td>
+      <td class="num"><strong>{{ r.no_usadas }}</strong></td>
+      <td class="num">{% if r.pendientes %}<span class="tag bad">{{ r.pendientes }}</span>{% else %}<span class="tag ok">0</span>{% endif %}</td>
+      <td class="num">{{ r.ausentismos }}</td><td class="nowrap">{{ fmt_fecha(r.ultima) }}</td>
+      <td class="noprint"><a class="btn sm" href="{{ url_for('web.rutas', p=p, q=r.ruta, estado=estado) }}">Ver días</a></td></tr>
+  {% else %}<tr><td colspan="7" class="muted">Sin rutas con este filtro.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+<p class="muted small">{{ total }} rutas. «Sin explicar» = días sin uso que todavía no tienen justificación.</p>
+{% else %}
+<div class="tablewrap">
+<table class="no-sort">
+  <thead><tr>{{ th_orden('Fecha', 'fecha', orden, dir) }}{{ th_orden('Ruta', 'ruta', orden, dir) }}{{ th_orden('Contratista', 'contratista', orden, dir) }}
+    {{ th_orden('Nota del Excel diario', 'nota', orden, dir) }}{{ th_orden('Justificación', 'estado', orden, dir) }}<th></th></tr></thead>
+  <tbody>
+  {% for f in filas %}
+    <tr>
+      <td class="nowrap">{{ dia_sem(f.fecha) }} {{ fmt_fecha(f.fecha) }}</td>
+      <td><strong>{{ f.ruta }}</strong> <span class="muted small">{{ f.categoria or '' }}</span></td>
+      <td>{{ f.contratista or '—' }}</td>
+      <td>{{ f.nota_excel or '' }}{% if f.hay_aus %} <span class="tag info">Ausentismo</span>{% endif %}{% if f.desact %} <span class="tag off">Desactivada</span>{% endif %}</td>
+      <td>
+        {% if f.j_id %}
+          <span class="tag ok">{{ f.motivo }}</span>
+          {% if f.requiere_evidencia and not f.n_evid %}<span class="tag bad">Falta evidencia</span>{% elif f.n_evid %}<span class="tag off">{{ f.n_evid }} adjunto(s)</span>{% endif %}
+          {% if f.detalle %}<div class="muted small">{{ f.detalle }}</div>{% endif %}
+        {% elif f.sug %}
+          <span class="tag warn">Sugerida</span> {{ f.sug.motivo }} <span class="muted small">({{ f.sug.fuente }})</span>
+        {% else %}<span class="tag bad">Pendiente</span>{% endif %}
+      </td>
+      <td class="nowrap noprint">
+        {% if f.sug and not cerrado and puede('captura') %}
+          <form method="post" action="{{ url_for('web.aceptar_sugerencias') }}" style="display:inline">
+            {{ csrf() }}<input type="hidden" name="p" value="{{ p }}"><input type="hidden" name="solo" value="{{ f.fecha.isoformat() }}|{{ f.ruta }}">
+            <button class="btn sm">Aceptar</button></form>
+        {% endif %}
+        <a class="btn sm" href="{{ url_for('web.ruta_detalle', fecha=f.fecha.isoformat(), ruta=f.ruta) }}">{{ 'Ver' if f.j_id or cerrado or not puede('captura') else 'Justificar' }}</a>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">No hay rutas con este filtro. 🎉</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ paginador(pg, paginas, total) }}
+{% endif %}
+{% endblock %}

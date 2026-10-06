@@ -1,0 +1,14 @@
+# Datos corporativos: NUNCA se suben al repositorio ni a Railway
+2026/
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+db/*.sqlite*
+.env
+__pycache__/
+*.pyc
+.venv/
+db/.secret_key
+respaldos/
+*.zip

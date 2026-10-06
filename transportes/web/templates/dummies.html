@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo, paginador, th_orden with context %}
+{% block title %}Dummys y excepciones{% endblock %}
+{% block body %}
+<div class="top">
+  <div><h1>Dummys y excepciones · {{ periodo_label(p) }}</h1>
+    <div class="muted">Conteo por contratista y quincena, tomado de la hoja DDBB del archivo mensual.</div></div>
+  <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+    {{ selector_periodo(periodos, p) }}
+    <a class="btn" href="{{ url_for('web.export_dummies', p=p) }}">Descargar CSV</a>
+  </div>
+</div>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Contratista</th><th class="num">Dummys Q1</th><th class="num">Dummys Q2</th><th class="num">Total dummys</th>
+    <th class="num">En ruta fija</th><th class="num">Spot 1</th><th class="num">Spot incr.</th><th class="num">Excepciones</th>
+    <th class="num">Recargas</th><th class="num">Envases</th><th class="num">Sin firma</th></tr></thead>
+  <tbody>
+  {% for r in resumen %}
+    <tr><td><a href="{{ qs(ct=r.contratista) }}#detalle">{{ r.contratista }}</a></td>
+      <td class="num">{{ r.d1 }}</td><td class="num">{{ r.d2 }}</td><td class="num"><strong>{{ r.dummys }}</strong></td>
+      <td class="num">{{ r.dum_fija }}</td><td class="num">{{ r.spot1 }}</td><td class="num">{{ r.spot_inc }}</td>
+      <td class="num">{{ r.excepciones }}</td><td class="num">{{ r.recargas }}</td><td class="num">{{ r.envases }}</td>
+      <td class="num">{% if r.sin_firma %}<span class="tag bad">{{ r.sin_firma }}</span>{% else %}0{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total</td><td class="num">{{ tot.d1 }}</td><td class="num">{{ tot.d2 }}</td><td class="num">{{ tot.dummys }}</td>
+    <td class="num">{{ tot.dum_fija }}</td><td class="num">{{ tot.spot1 }}</td><td class="num">{{ tot.spot_inc }}</td>
+    <td class="num">{{ tot.excepciones }}</td><td class="num">{{ tot.recargas }}</td><td class="num">{{ tot.envases }}</td><td class="num">{{ tot.sin_firma }}</td></tr></tfoot>
+</table>
+</div>
+<p class="muted small">Los conteos de Spot 1 y Spot incremental incluyen todas las filas marcadas, igual que las tablas dinámicas del Excel.</p>
+
+<h2 id="detalle">Detalle</h2>
+<form method="get" class="card noprint" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.8rem">
+  <input type="hidden" name="p" value="{{ p }}">
+  <select name="ct" onchange="this.form.submit()" style="max-width:260px" aria-label="Contratista">
+    <option value="">Todos los contratistas</option>
+    {% for r in resumen %}<option {{ 'selected' if ct == r.contratista }}>{{ r.contratista }}</option>{% endfor %}
+  </select>
+  <select name="quincena" onchange="this.form.submit()" aria-label="Quincena">
+    <option value="">Ambas quincenas</option><option value="1" {{ 'selected' if qn == 1 }}>Quincena 1</option><option value="2" {{ 'selected' if qn == 2 }}>Quincena 2</option>
+  </select>
+  <select name="tipo" onchange="this.form.submit()" aria-label="Tipo">
+    <option value="">Todos los tipos</option>
+    {% for v, t in [('dummy','Dummy'),('excepcion','Excepción'),('recarga','Recarga'),('envases','Envases'),('ruta_fija','Ruta fija'),('spot1','Spot 1'),('spot_inc','Spot incremental')] %}
+      <option value="{{ v }}" {{ 'selected' if tipo == v }}>{{ t }}</option>{% endfor %}
+  </select>
+  <input type="search" name="q" value="{{ q }}" placeholder="Transporte o comentario"><button class="btn">Buscar</button>
+  <a class="btn" href="{{ url_for('web.dummies', p=p) }}">Limpiar</a>
+</form>
+<div class="tablewrap">
+<table class="no-sort">
+  <thead><tr>{{ th_orden('Fecha', 'fecha', orden, dir) }}{{ th_orden('Q', 'quincena', orden, dir) }}{{ th_orden('Transporte', 'transporte', orden, dir) }}{{ th_orden('Ruta → liquidada', 'ruta', orden, dir) }}<th>Tipo</th>{{ th_orden('Contratista', 'contratista', orden, dir) }}<th>Firmada</th><th>Comentario</th></tr></thead>
+  <tbody>
+  {% for e in detalle %}
+    <tr><td class="nowrap">{{ fmt_fecha(e.fecha) }}</td><td>{{ e.quincena or '' }}</td><td>{{ e.transporte or '—' }}</td>
+      <td class="nowrap">{{ e.ruta or '' }} → <strong>{{ e.ruta_liquidada or '' }}</strong></td>
+      <td>{% if e.dummy == 'SI' %}<span class="tag info">Dummy</span> {% endif %}{% if e.excepcion == 'SI' %}<span class="tag warn">Excepción</span> {% endif %}{% if e.recarga == 'SI' %}<span class="tag off">Recarga</span> {% endif %}{% if e.envases == 'SI' %}<span class="tag off">Envases</span> {% endif %}{% if e.ruta_fija == 'SI' %}<span class="tag off">Ruta fija</span> {% endif %}{% if e.spot1 == 'SI' %}<span class="tag off">Spot 1</span> {% endif %}{% if e.spot_inc == 'SI' %}<span class="tag off">Spot inc.</span>{% endif %}</td>
+      <td>{{ e.contratista or '—' }}</td>
+      <td>{% if e.firmada %}<span class="tag ok">{{ e.firmada }}</span>{% elif e.dummy == 'SI' %}<span class="tag bad">No</span>{% endif %}</td>
+      <td class="small">{{ e.comentario or '' }}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">Sin registros.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{{ paginador(pg, paginas, total) }}
+{% endblock %}

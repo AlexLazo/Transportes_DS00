@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo, pct with context %}
+{% block title %}Para explicar{% endblock %}
+{% macro tarjeta(h, tono) %}
+<div class="card tema {{ tono }}">
+  <div style="display:flex;gap:.8rem;align-items:baseline">
+    <strong style="flex:1">{{ h.titulo }}</strong><span class="cnt big">{{ h.cantidad }}</span>
+  </div>
+  <p class="muted small" style="margin:.2rem 0 .5rem">{{ h.ayuda }}</p>
+  {% if h.filas %}
+  <ul class="ejemplos">
+    {% for f in h.filas[:3] %}<li>{% for c in h.cols[:4] %}{% set v = f[c] %}{% if v is not none %}{% if v.strftime is defined %}{{ fmt_fecha(v) }}{% else %}{{ v }}{% endif %}{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <a class="btn sm noprint" href="{{ url_for('web.calidad', p=p) }}#{{ h.codigo }}">Ver los {{ h.cantidad }}</a>
+</div>
+{% endmacro %}
+{% block body %}
+<div class="top">
+  <div><h1>Para explicar · {{ periodo_label(p) }}</h1>
+    <div class="muted">Todo lo que un auditor puede preguntar este mes, de lo más grave a lo informativo.
+      {% if cerrado %}<span class="tag info">Periodo cerrado</span>{% endif %}</div></div>
+  <div style="display:flex;gap:.6rem;align-items:center">
+    {{ selector_periodo(periodos, p) }}
+    <a class="btn primary noprint" href="{{ url_for('web.reporte', p=p) }}">Reporte imprimible</a>
+  </div>
+</div>
+
+<div class="grid2" style="grid-template-columns:1fr 1fr">
+  {% for titulo, u, link in [('GC · cerveza y gaseosa', gc, 'GC'), ('AJ · agua y jugos', ajuso, 'AJ')] %}
+  <div class="card">
+    <h3 style="margin-top:0">{{ titulo }}</h3>
+    {% if u.total %}
+    <div class="kpis" style="margin:0">
+      <div class="kpi"><div class="l">Uso de rutas</div><div class="v">{{ pct(u.pct_uso) }}</div><div class="s">{{ u.usadas }} de {{ u.total }}</div></div>
+      <div class="kpi"><div class="l">No usadas</div><div class="v">{{ u.no_usadas }}</div><div class="s">{{ u.justificadas }} justificadas</div></div>
+      <div class="kpi {{ 'bad' if u.pendientes else 'ok' }}"><div class="l">Sin explicar</div><div class="v">{{ u.pendientes }}</div>
+        <div class="s"><a href="{{ url_for('web.rutas', p=p, cat=link) }}">ir a justificar</a></div></div>
+    </div>
+    {% else %}<p class="muted">Sin datos este mes.</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="kpis" style="margin-top:1rem">
+  <div class="kpi"><div class="l">Ausentismos registrados</div><div class="v">{{ aus.total }}</div>
+    <div class="s">{{ aus.explican }} explican una ruta no usada · {{ aus.cubiertos }} la ruta salió igual · {{ aus.sin_ruta }} sin ruta en la matriz</div></div>
+  {% if aj.total %}
+  <div class="kpi"><div class="l">AJ: cargas del control</div><div class="v">{{ aj.total }}</div>
+    <div class="s">{{ aj.dummys }} dummys · {{ aj.recargas }} recargas · {{ aj.reposiciones }} reposiciones</div></div>
+  {% endif %}
+  <div class="kpi {{ 'bad' if grupos.graves else 'ok' }}"><div class="l">Temas graves</div><div class="v">{{ grupos.graves | length }}</div></div>
+  <div class="kpi"><div class="l">Temas en orden</div><div class="v">{{ grupos.ok | length }}</div></div>
+</div>
+
+{% if aus.total == 0 %}
+<div class="flash warn">No hay ausentismos cargados para este mes. Si los hubo, falta capturarlos o el archivo del mes es una copia (ver «Archivos importados»).</div>
+{% endif %}
+
+{% if grupos.graves %}<h2>Graves: hay que tener la explicación</h2>
+<div class="temas">{% for h in grupos.graves %}{{ tarjeta(h, 'grave') }}{% endfor %}</div>{% endif %}
+{% if grupos.revisar %}<h2>Por revisar</h2>
+<div class="temas">{% for h in grupos.revisar %}{{ tarjeta(h, 'revisar') }}{% endfor %}</div>{% endif %}
+{% if grupos.info %}<h2>Informativos</h2>
+<div class="temas">{% for h in grupos.info %}{{ tarjeta(h, 'info') }}{% endfor %}</div>{% endif %}
+{% if grupos.ok %}<h2>En orden</h2>
+<div class="card"><ul class="ejemplos">{% for h in grupos.ok %}<li><span class="tag ok">OK</span> {{ h.titulo }}</li>{% endfor %}</ul></div>{% endif %}
+{% endblock %}

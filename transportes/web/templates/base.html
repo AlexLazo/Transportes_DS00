@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Control de Transportes{% endblock %} · DS00</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% macro nav(endpoint, texto) -%}
+  <a href="{{ url_for(endpoint, p=request.args.get('p')) if request.args.get('p') else url_for(endpoint) }}"
+     class="{{ 'on' if request.endpoint == endpoint else '' }}">{{ texto }}</a>
+{%- endmacro %}
+{% if usuario %}
+<div class="layout">
+  <nav class="side">
+    <div class="logo">Control de Transportes<small>CD Soyapango · DS00</small></div>
+    {{ nav('web.inicio', 'Tablero') }}
+    {{ nav('web.explicar', 'Para explicar') }}
+    <div class="grp">Rutas fijas</div>
+    {{ nav('web.rutas', 'No usadas y justificación') }}
+    {{ nav('web.matriz', 'Matriz ruta × día') }}
+    {{ nav('web.dias', 'Días operativos') }}
+    <div class="grp">Pagos</div>
+    {{ nav('web.dummies', 'Dummys y excepciones') }}
+    {{ nav('web.ausentismos', 'Ausentismos') }}
+    {{ nav('web.aj', 'AJ · Agua y jugos') }}
+    <div class="grp">Auditoría</div>
+    {{ nav('web.calidad', 'Hallazgos') }}
+    {{ nav('web.reporte', 'Reporte imprimible') }}
+    {{ nav('web.archivos', 'Archivos importados') }}
+    {% if puede('admin') %}
+      {{ nav('web.cierre', 'Cierre de mes') }}
+      {{ nav('web.bitacora', 'Bitácora') }}
+      <div class="grp">Administración</div>
+      {{ nav('web.usuarios', 'Usuarios') }}
+      {{ nav('web.motivos', 'Motivos') }}
+      {{ nav('web.respaldos', 'Respaldos') }}
+    {% endif %}
+    <div class="user">
+      <strong>{{ usuario.nombre }}</strong><br><span class="muted">{{ usuario.rol }}</span>
+      <form method="post" action="{{ url_for('web.logout') }}" style="margin-top:.5rem">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btn sm">Cerrar sesión</button>
+      </form>
+    </div>
+  </nav>
+  <main class="main">
+    {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+    {% block body %}{% endblock %}
+  </main>
+</div>
+{% else %}
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}" style="max-width:380px;margin:1rem auto">{{ msg }}</div>{% endfor %}
+  {% block anon %}{% endblock %}
+{% endif %}
+<script src="{{ url_for('static', filename='tabla.js') }}"></script>
+</body>
+</html>

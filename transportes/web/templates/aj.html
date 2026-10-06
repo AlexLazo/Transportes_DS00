@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_macros.html" import selector_periodo, pct with context %}
+{% from "_matriz.html" import matriz with context %}
+{% block title %}AJ · Agua y jugos{% endblock %}
+{% macro tabla(cols, filas) %}
+<div class="tablewrap"><table>
+  <thead><tr>{% for c in cols %}<th>{{ c | replace('_', ' ') }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for f in filas[:200] %}<tr>{% for c in cols %}<td>{% set v = f[c] %}{% if v is none %}—{% elif v.strftime is defined %}{{ fmt_fecha(v) }}{% else %}{{ v }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>
+{% if filas | length > 200 %}<p class="muted small">Se muestran 200 de {{ filas | length }}.</p>{% endif %}
+{% endmacro %}
+{% block body %}
+<div class="top">
+  <div><h1>AJ · Agua y jugos · {{ periodo_label(p) }}</h1>
+    <div class="muted">Mismo control que GC (uso de rutas, justificación, dummys y recargas), usando además el control de la supervisora.</div></div>
+  <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+    {{ selector_periodo(periodos, p) }}
+    {% if k.total %}<a class="btn" href="{{ url_for('web.export_aj', p=p) }}">Descargar CSV</a>{% endif %}
+  </div>
+</div>
+
+{% if not uso.total and not k.total %}
+  <div class="flash warn">No hay datos de AJ en este mes. La lista oficial de rutas de AJ y el archivo <strong>Cargas - AJ.xlsx</strong> cubren agosto a octubre.</div>
+{% else %}
+
+<h2>Uso de rutas fijas de AJ</h2>
+<div class="kpis">
+  <div class="kpi {{ 'ok' if uso.pct_uso and uso.pct_uso >= 90 else 'warn' }}"><div class="l">Uso de rutas</div><div class="v">{{ pct(uso.pct_uso) }}</div>
+    <div class="s">{{ uso.usadas }} de {{ uso.total }} ruta-días{% if uso.por_control_aj %} · {{ uso.por_control_aj }} según control de la supervisora{% endif %}</div></div>
+  <div class="kpi"><div class="l">Rutas no usadas</div><div class="v">{{ uso.no_usadas }}</div><div class="s">{{ uso.rutas }} rutas · {{ uso.dias }} días</div></div>
+  <div class="kpi {{ 'bad' if uso.pendientes else 'ok' }}"><div class="l">Sin justificar</div><div class="v">{{ uso.pendientes }}</div>
+    <div class="s"><a href="{{ url_for('web.rutas', p=p, cat='AJ') }}">justificar</a></div></div>
+</div>
+{{ matriz(m) }}
+<p class="noprint"><a class="btn" href="{{ qs(todas='1' if solo_inc else None) }}">{{ 'Mostrar todas las rutas' if solo_inc else 'Solo rutas con incidencias' }}</a></p>
+
+{% if k.total %}
+<h2>Cargas, dummys y recargas (control de la supervisora)</h2>
+<div class="kpis">
+  <div class="kpi"><div class="l">Cargas registradas</div><div class="v">{{ k.total }}</div><div class="s">{{ k.dias }} días · {{ k.rutas }} rutas</div></div>
+  <div class="kpi"><div class="l">Carga del día</div><div class="v">{{ k.carga_dia }}</div></div>
+  <div class="kpi"><div class="l">Dummys</div><div class="v">{{ k.dummys }}</div></div>
+  <div class="kpi"><div class="l">Recargas</div><div class="v">{{ k.recargas }}</div></div>
+  <div class="kpi"><div class="l">Reposiciones</div><div class="v">{{ k.reposiciones }}</div></div>
+  <div class="kpi"><div class="l">Recolecciones</div><div class="v">{{ k.recolecciones }}</div><div class="s">{{ '%.0f' | format(k.envases) }} envases · {{ '%.0f' | format(k.racks) }} racks</div></div>
+</div>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Transportista</th><th class="num">Dummys Q1</th><th class="num">Dummys Q2</th><th class="num">Total dummys</th><th class="num">Recargas</th><th class="num">Reposiciones</th><th class="num">Carga del día</th><th class="num">Total cargas</th></tr></thead>
+  <tbody>
+  {% for t in por_transp %}
+    <tr><td>{{ t.nombre or t.codigo }} <span class="muted small">{{ t.codigo }}</span></td><td class="num">{{ t.d1 }}</td><td class="num">{{ t.d2 }}</td><td class="num"><strong>{{ t.dummys }}</strong></td><td class="num">{{ t.recargas }}</td><td class="num">{{ t.reposiciones }}</td><td class="num">{{ t.carga_dia }}</td><td class="num">{{ t.total }}</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><td>Total</td><td class="num">{{ tot.d1 }}</td><td class="num">{{ tot.d2 }}</td><td class="num">{{ tot.dummys }}</td><td class="num">{{ tot.recargas }}</td><td class="num">{{ tot.reposiciones }}</td><td class="num">{{ tot.carga_dia }}</td><td class="num">{{ tot.total }}</td></tr></tfoot>
+</table></div>
+<p class="muted small">Quincena 1 = días 1 al 15; quincena 2 = del 16 en adelante.</p>
+
+<h2>Cruce contra SAP</h2>
+{% set info = ['no_verificables'] %}
+{% set bloques = [
+  ('dias_sin_control', 'Días en que SAP tiene cargas de AJ y el control no las registra', ['fecha','transportes_sap','sin_registrar','situacion']),
+  ('sin_sap', 'Cargas de la supervisora que no están en SAP', ['fecha','transporte','ruta','motivo']),
+  ('sap_sin_control', 'Transportes de SAP en rutas de AJ que no están en su control', ['fecha','transporte','ruta','cantidad']),
+  ('no_verificables', 'Recargas y reposiciones: el Excel diario no las trae, no se pueden comprobar en SAP', ['fecha','transporte','ruta','tipo']),
+  ('recargas', 'La hoja Recargas no coincide con las cargas marcadas como recarga', ['fecha','transporte','ruta','motivo']),
+  ('fecha_dif', 'Fecha distinta a la de SAP', ['transporte','ruta','fecha_control','fecha_sap']),
+  ('cantidad_dif', 'Cajas distintas a las de SAP', ['fecha','transporte','ruta','cajas_control','cajas_sap']),
+  ('avisos', 'Valores corregidos al leer (errores de captura)', ['fecha','transporte','ruta','aviso'])] %}
+{% for clave, titulo, cols in bloques %}
+<details class="hall" {{ 'open' if ctl[clave] and loop.index <= 1 }}>
+  <summary>{% if not ctl[clave] %}<span class="tag ok">OK</span>{% elif clave in info %}<span class="tag info">Info</span>{% else %}<span class="tag {{ 'bad' if loop.index <= 3 else 'warn' }}">Revisar</span>{% endif %}
+    <strong>{{ titulo }}</strong><span class="cnt">{{ ctl[clave] | length }}</span></summary>
+  <div class="body">{% if ctl[clave] %}{{ tabla(cols, ctl[clave]) }}{% else %}<p class="muted">Sin diferencias.</p>{% endif %}</div>
+</details>
+{% endfor %}
+
+<div class="grid2">
+  <div><h2>Por ruta</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Ruta</th><th class="num">Cargas</th><th class="num">Carga día</th><th class="num">Dummys</th><th class="num">Recargas</th><th class="num">Repos.</th><th class="num">Recol.</th></tr></thead>
+      <tbody>{% for r in por_ruta %}<tr><td><strong>{{ r.ruta }}</strong></td><td class="num">{{ r.total }}</td><td class="num">{{ r.carga_dia }}</td><td class="num">{{ r.dummys }}</td><td class="num">{{ r.recargas }}</td><td class="num">{{ r.reposiciones }}</td><td class="num">{{ r.recolecciones }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+  <div><h2>Recolección de envases y racks</h2>
+    {% if recolecciones %}<div class="tablewrap"><table>
+      <thead><tr><th>Fecha</th><th>Ruta</th><th>Personal</th><th>Cliente</th><th class="num">Envases</th><th class="num">Racks</th></tr></thead>
+      <tbody>{% for r in recolecciones %}<tr><td class="nowrap">{{ fmt_fecha(r.fecha) }}</td><td>{{ r.ruta }}</td><td>{{ r.personal or '—' }}</td><td>{{ r.cliente or '—' }}</td><td class="num">{{ '%.0f' | format(r.envases or 0) }}</td><td class="num">{{ '%.0f' | format(r.racks or 0) }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="muted">Sin recolecciones este mes.</p>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

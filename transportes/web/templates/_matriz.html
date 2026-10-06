@@ -1,0 +1,49 @@
+{% macro leyenda() %}
+<div class="legend">
+  <span><i class="cell u"></i> Usada</span>
+  <span><i class="cell c"></i> Usada por cambio de cabecera</span>
+  <span><i class="cell n"></i> No usada, sin explicar</span>
+  <span><i class="cell e">A</i> No usada, explicada por los Excel (sin aceptar)</span>
+  <span><i class="cell j">A</i> No usada, justificada</span>
+  <span><i class="cell o"></i> Día no operativo</span>
+  <span><i class="cell vacio"></i> Sin archivo</span>
+</div>
+<div class="legend">
+  <strong>Letra = qué pasó:</strong>
+  <span><b>A</b> Ausentismo</span><span><b>V</b> Vacaciones</span><span><b>R</b> Reserva (disponible)</span>
+  <span><b>I</b> Incapacidad</span><span><b>T</b> Taller</span><span><b>X</b> Ruta desactivada</span>
+  <span><b>C</b> Cubierta por dummy/spot</span><span><b>F</b> Feriado/cerrado</span><span><b>·</b> Nota sin clasificar</span>
+  <span>AJ: <b>◆</b> dummy · <b>↺</b> recarga · <b>⇄</b> reposición · <b>▣</b> recolección</span>
+</div>
+{% endmacro %}
+
+{% macro matriz(m, mostrar_leyenda=true) %}
+{% if mostrar_leyenda %}{{ leyenda() }}{% endif %}
+<div class="tablewrap">
+<table class="matrix">
+  <thead>
+    <tr><th></th>{% for d in range(1, m.dias_mes + 1) %}<th>{{ d }}</th>{% endfor %}</tr>
+    <tr class="dow"><th></th>{% for x in m.dow %}<th>{{ x }}</th>{% endfor %}</tr>
+  </thead>
+  <tbody>
+  {% for r in m.lista %}
+    <tr>
+      <td class="rl"><strong>{{ r.ruta }}</strong> <span class="muted">{{ (r.contratista or '')[:22] }}</span></td>
+      {% for d in range(1, m.dias_mes + 1) %}
+        {% set c = r.celdas.get(d) %}
+        <td>
+        {% if not c %}<span class="cell vacio" title="{{ d }}: sin archivo"></span>
+        {% elif c.link %}<a class="cell {{ c.cls }}" href="{{ url_for('web.ruta_detalle', fecha=c.fecha.isoformat(), ruta=c.ruta) }}" title="{{ c.titulo }}">{{ c.letra }}</a>
+        {% else %}<span class="cell {{ c.cls }}" title="{{ c.titulo }}">{{ c.letra }}</span>{% endif %}
+        </td>
+      {% endfor %}
+    </tr>
+  {% else %}<tr><td class="muted">Sin rutas con incidencias en este periodo.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% if m.aus_total %}
+<p class="muted small">Ausentismos del mes: {{ m.aus_total }} ruta-días.
+  {% if m.aus_fuera %}{{ m.aus_fuera }} caen en rutas que no están en esta matriz (rutas fuera de la lista del mes, otro tipo de ruta o día sin archivo).{% endif %}</p>
+{% endif %}
+{% endmacro %}
