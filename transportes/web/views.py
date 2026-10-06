@@ -95,6 +95,9 @@ _intentos = {}
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if not scalar("SELECT COUNT(*) FROM usuarios"):
+        if os.environ.get("SETUP_TOKEN"):
+            # /setup exige el token y responde 404 sin él: en vez de mandar al visitante a un 404, se le explica.
+            return render_template("sin_admin.html")
         return redirect(url_for("web.setup"))
     if request.method == "POST":
         clave = (request.remote_addr, request.form.get("usuario", "").lower())

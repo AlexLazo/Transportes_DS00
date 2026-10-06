@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Falta crear el administrador{% endblock %}
+{% block anon %}
+<div class="login">
+  <h1>Control de Transportes</h1>
+  <p class="muted">CD Soyapango · DS00</p>
+  <div class="card">
+    <p style="margin-top:0"><strong>La aplicación está funcionando</strong>, pero todavía no tiene ningún usuario.</p>
+    <p class="small muted" style="margin-bottom:0">Quien administra el servicio puede crear el primer administrador abriendo la dirección
+      de configuración, que lleva el código secreto <code>SETUP_TOKEN</code> definido en Railway
+      (<code>/setup?token=…</code>), o restaurando un respaldo con <code>python respaldo.py restaurar</code>.</p>
+  </div>
+</div>
+{% endblock %}
