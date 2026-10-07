@@ -307,7 +307,8 @@ def importar_archivos(archivos, engine=None, forzar=False, log=print, origen="we
         estado = "OK"
     except Exception:
         estado = "ERROR"
-        resumen["traza"] = traceback.format_exc()
+        # los errores de SQLAlchemy traen la consulta con datos reales: se guarda solo el final del rastreo
+        resumen["traza"] = "\n".join(traceback.format_exc().splitlines()[-12:])[:1500]
         log(resumen["traza"])
     with engine.begin() as con:
         con.execute(update(db.importaciones).where(db.importaciones.c.id == imp_id).values(

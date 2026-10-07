@@ -40,6 +40,10 @@ def create_app(engine=None):
         ENGINE=engine or db.make_engine(),
     )
     db.init_db(app.config["ENGINE"])
+    # gunicorn --preload crea la app UNA vez y luego la copia (fork) a cada proceso de trabajo. Si quedara una conexión
+    # abierta en el pool, los procesos compartirían el mismo socket SSL y PostgreSQL respondería «bad record mac».
+    # Cerrar el pool aquí hace que cada proceso abra sus propias conexiones.
+    app.config["ENGINE"].dispose()
     if en_railway():
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
