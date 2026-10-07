@@ -32,7 +32,7 @@ def create_app(engine=None):
     app = Flask(__name__)
     app.config.update(
         SECRET_KEY=_secret_key(raiz),
-        MAX_CONTENT_LENGTH=12 * 1024 * 1024,
+        MAX_CONTENT_LENGTH=160 * 1024 * 1024,   # varios Excel de hasta 40 MB por vez
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=en_railway(),

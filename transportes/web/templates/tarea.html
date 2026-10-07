@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Carga #{{ t.id }}{% endblock %}
+{% block body %}
+<p class="small"><a href="{{ url_for('web.cargar') }}">← Cargar archivos</a></p>
+<h1>{{ 'Importación de Excel' if t.tipo == 'IMPORTAR' else 'Restauración de respaldo' }} #{{ t.id }}
+  {% if t.estado == 'OK' %}<span class="tag ok">Listo</span>{% elif t.estado == 'ERROR' %}<span class="tag bad">Con error</span>{% else %}<span class="tag warn">En curso…</span>{% endif %}</h1>
+<p class="muted">{{ t.descripcion }} · {{ t.creado_en.strftime('%d/%m/%Y %H:%M') }}{% if t.usuario %} · {{ t.usuario }}{% endif %}</p>
+
+{% if t.estado == 'CORRIENDO' %}
+  <div class="flash warn">Procesando. Puedes dejar esta página abierta; se actualiza sola. Si la cierras, el proceso sigue.</div>
+  <pre id="log" class="small" style="background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.8rem;max-height:340px;overflow:auto">{{ t.log or 'Iniciando…' }}</pre>
+  <script>
+    (function () {
+      function tick() {
+        fetch('{{ url_for("web.tarea_json", tid=t.id) }}', { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var l = document.getElementById('log'); l.textContent = j.log || 'Iniciando…'; l.scrollTop = l.scrollHeight;
+            if (j.estado !== 'CORRIENDO') location.reload(); else setTimeout(tick, 2000);
+          })
+          .catch(function () { setTimeout(function () { location.href = '{{ url_for("web.login") }}'; }, 2500); });  // una restauración reemplaza los usuarios: hay que volver a entrar
+      }
+      setTimeout(tick, 1500);
+    })();
+  </script>
+
+{% elif t.estado == 'ERROR' %}
+  <div class="flash error"><strong>No se pudo completar.</strong> {{ r.error or 'Revisa el detalle de abajo.' }}</div>
+  {% if r.errores %}<ul>{% for e in r.errores %}<li class="small">{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <details class="hall"><summary><strong>Detalle técnico</strong></summary><div class="body"><pre class="small" style="white-space:pre-wrap">{{ t.log }}{{ r.traza or '' }}</pre></div></details>
+
+{% elif t.tipo == 'RESTAURAR' %}
+  <div class="flash ok"><strong>Respaldo restaurado.</strong> Como se reemplazaron los usuarios, vuelve a iniciar sesión con los del respaldo.</div>
+  <table><thead><tr><th>Tabla</th><th class="num">Filas</th></tr></thead><tbody>
+  {% for nombre, n in (r.tablas or {}).items() %}<tr><td>{{ nombre }}</td><td class="num">{{ n }}</td></tr>{% endfor %}</tbody></table>
+  <p><a class="btn primary" href="{{ url_for('web.login') }}">Iniciar sesión</a></p>
+
+{% else %}
+  <div class="kpis">
+    <div class="kpi"><div class="l">Archivos nuevos o actualizados</div><div class="v">{{ r.nuevos }}</div></div>
+    <div class="kpi"><div class="l">Ya estaban cargados</div><div class="v">{{ r.sin_cambios }}</div></div>
+    <div class="kpi {{ 'bad' if r.errores else 'ok' }}"><div class="l">Con error</div><div class="v">{{ r.errores | length }}</div></div>
+    {% if r.analisis %}<div class="kpi"><div class="l">Ruta-días evaluados</div><div class="v">{{ r.analisis.uso_rutas }}</div><div class="s">{{ r.analisis.dias }} días con archivo</div></div>{% endif %}
+  </div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Archivo</th><th>Qué es</th><th>Contenido</th><th class="num">Filas</th><th>Resultado</th></tr></thead>
+    <tbody>
+    {% for a in r.archivos %}
+      <tr><td class="small">{{ a.nombre }}</td>
+        <td>{{ {'DIARIO':'Base diaria','EXCEPCIONES':'Excepciones / dummys','AUSENTISMOS':'Ausentismos','RUTAS_FIJAS':'Rutas fijas','CARGAS_AJ':'Cargas AJ','OTRO':'—'}.get(a.tipo, a.tipo or '—') }}</td>
+        <td class="nowrap">{% if a.fecha %}{{ a.fecha[8:10] }}/{{ a.fecha[5:7] }}/{{ a.fecha[:4] }}{% elif a.periodo %}{{ periodo_label(a.periodo) }}{% else %}—{% endif %}</td>
+        <td class="num">{{ a.filas if a.filas else '' }}</td>
+        <td>
+          {% if a.resultado == 'sin cambios' %}<span class="tag off">Ya estaba cargado</span>
+          {% elif a.estado == 'OK' %}<span class="tag ok">Cargado</span>
+          {% elif a.estado == 'DUPLICADO' %}<span class="tag warn">Duplicado</span>
+          {% elif a.estado == 'OMITIDO' %}<span class="tag off">Omitido</span>
+          {% else %}<span class="tag bad">Con error</span>{% endif %}
+          {% if a.mensaje %}<div class="muted small">{{ a.mensaje }}</div>{% endif %}
+        </td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p style="margin-top:1rem"><a class="btn primary" href="{{ url_for('web.explicar') }}">Ver «Para explicar»</a>
+    <a class="btn" href="{{ url_for('web.archivos') }}">Archivos importados</a> <a class="btn" href="{{ url_for('web.inicio') }}">Tablero</a></p>
+{% endif %}
+{% endblock %}

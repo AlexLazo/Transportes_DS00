@@ -162,8 +162,8 @@ def _meta_y_claves(tipo, datos, path: Path):
     return None, None, meta
 
 
-def procesar(con, carpeta: Path, path: Path, forzar: bool, log, solo=None):
-    rel = path.relative_to(carpeta).as_posix()
+def procesar(con, carpeta, path: Path, forzar: bool, log, solo=None, rel=None):
+    rel = rel or path.relative_to(carpeta).as_posix()
     st = path.stat()
     h = _hash(path)
     previo = con.execute(select(db.archivos).where(db.archivos.c.ruta == rel)).mappings().first()
@@ -203,6 +203,10 @@ def procesar(con, carpeta: Path, path: Path, forzar: bool, log, solo=None):
         return f"ERROR {e}"
 
 
+def _cuando(a):
+    return a["importado_en"] or datetime.min
+
+
 def seleccionar_vigentes(con, log):
     """Entre archivos que cubren lo mismo, deja uno y marca el resto DUPLICADO (sin filas)."""
     arch = con.execute(select(db.archivos).where(
@@ -214,14 +218,14 @@ def seleccionar_vigentes(con, log):
             # gana el archivo cuyo NOMBRE coincide con su contenido y que está en la carpeta de su mes
             clave = ("DIARIO", a["fecha"])
             carpeta_ok = 1 if meta.get("mes_carpeta") == (a["fecha"].month if a["fecha"] else None) else 0
-            rango = (0 if meta.get("aviso_nombre") else 1, carpeta_ok, a["filas"] or 0, a["ruta"])
+            rango = (0 if meta.get("aviso_nombre") else 1, carpeta_ok, _cuando(a), a["filas"] or 0, a["ruta"])
         elif a["tipo"] == "CARGAS_AJ":
             clave = ("CARGAS_AJ", "unico")   # un solo control de AJ vigente: el que llega más lejos
-            rango = (1, meta.get("max_fecha", ""), a["filas"] or 0, a["ruta"])
+            rango = (1, meta.get("max_fecha", ""), _cuando(a), a["filas"] or 0, a["ruta"])
         elif a["tipo"] in ("EXCEPCIONES", "AUSENTISMOS"):
             clave = (a["tipo"], a["periodo"])
             carpeta_ok = 0 if meta.get("aviso_periodo") else 1
-            rango = (carpeta_ok, meta.get("max_fecha", ""), a["filas"] or 0, a["ruta"])
+            rango = (carpeta_ok, meta.get("max_fecha", ""), _cuando(a), a["filas"] or 0, a["ruta"])
         else:
             continue  # RUTAS_FIJAS se resuelve por periodo más abajo
         grupos.setdefault(clave, []).append((rango, a))
@@ -254,20 +258,22 @@ def seleccionar_vigentes(con, log):
     return por_reparsear
 
 
-def importar(carpeta, engine=None, forzar=False, log=print, origen="local", solo=None):
-    carpeta = Path(carpeta).resolve()
+def importar_archivos(archivos, engine=None, forzar=False, log=print, origen="web", solo=None):
+    """Importa una lista de (ruta real del archivo, ruta lógica que se guarda en la base).
+    Sirve igual para una carpeta del disco y para archivos subidos desde la web. Devuelve (ok, resumen)."""
     engine = engine or db.make_engine()
     db.init_db(engine)
     with engine.begin() as con:
         imp_id = con.execute(insert(db.importaciones).values(
             inicio=datetime.now(), estado="CORRIENDO", origen=origen)).inserted_primary_key[0]
-    resumen = {"nuevos": 0, "sin_cambios": 0, "errores": []}
+    resumen = {"nuevos": 0, "sin_cambios": 0, "errores": [], "archivos": []}
+    por_rel = {rel: Path(path) for path, rel in archivos}
     try:
-        archivos = list(descubrir(carpeta))
-        log(f"{len(archivos)} archivos Excel encontrados en {carpeta}")
-        for i, path in enumerate(archivos, 1):
+        for i, (path, rel) in enumerate(archivos, 1):
+            path = Path(path)
             with engine.begin() as con:
-                r = procesar(con, carpeta, path, forzar, log, solo)
+                r = procesar(con, None, path, forzar, log, solo, rel=rel)
+            resumen["archivos"].append(dict(rel=rel, nombre=path.name, resultado=r))
             if r == "sin cambios":
                 resumen["sin_cambios"] += 1
             else:
@@ -275,17 +281,29 @@ def importar(carpeta, engine=None, forzar=False, log=print, origen="local", solo
                 log(f"[{i}/{len(archivos)}] {path.name}: {r}")
                 if r.startswith("ERROR"):
                     resumen["errores"].append(f"{path.name}: {r}")
+        log("Eligiendo la versión vigente de cada archivo…")
         with engine.begin() as con:
             pend = seleccionar_vigentes(con, log)
         for a in pend:  # un duplicado pasó a ser el vigente: hay que volver a cargarlo
-            with engine.begin() as con:
-                procesar(con, carpeta, carpeta / a["ruta"], True, log)
+            p = por_rel.get(a["ruta"])
+            if p is not None and p.exists():
+                with engine.begin() as con:
+                    procesar(con, None, p, True, log, rel=a["ruta"])
+            else:
+                log(f"Aviso: {a['ruta']} pasó a ser el vigente pero el archivo ya no está; súbelo de nuevo.")
         if pend:
             with engine.begin() as con:
                 seleccionar_vigentes(con, log)
         log("Recalculando cruce de rutas…")
         with engine.begin() as con:
             resumen["analisis"] = recalcular(con)
+        # estado final de cada archivo (puede haber quedado como duplicado, omitido, etc.)
+        with engine.connect() as con:
+            for item in resumen["archivos"]:
+                a = con.execute(select(db.archivos).where(db.archivos.c.ruta == item["rel"])).mappings().first()
+                if a:
+                    item.update(estado=a["estado"], tipo=a["tipo"], filas=a["filas"], mensaje=a["mensaje"],
+                                periodo=a["periodo"], fecha=a["fecha"].isoformat() if a["fecha"] else None)
         estado = "OK"
     except Exception:
         estado = "ERROR"
@@ -293,7 +311,16 @@ def importar(carpeta, engine=None, forzar=False, log=print, origen="local", solo
         log(resumen["traza"])
     with engine.begin() as con:
         con.execute(update(db.importaciones).where(db.importaciones.c.id == imp_id).values(
-            fin=datetime.now(), estado=estado, resumen=json.dumps(resumen, ensure_ascii=False, default=str)))
+            fin=datetime.now(), estado=estado,
+            resumen=json.dumps({k: v for k, v in resumen.items() if k != "archivos"}, ensure_ascii=False, default=str)))
     log(f"Importación {estado}: {resumen['nuevos']} procesados, {resumen['sin_cambios']} sin cambios, "
         f"{len(resumen['errores'])} con error")
-    return estado == "OK"
+    return estado == "OK", resumen
+
+
+def importar(carpeta, engine=None, forzar=False, log=print, origen="local", solo=None):
+    carpeta = Path(carpeta).resolve()
+    lista = [(p, p.relative_to(carpeta).as_posix()) for p in descubrir(carpeta)]
+    log(f"{len(lista)} archivos Excel encontrados en {carpeta}")
+    ok, _ = importar_archivos(lista, engine, forzar=forzar, log=log, origen=origen, solo=solo)
+    return ok
