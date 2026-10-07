@@ -58,8 +58,11 @@ def lanzar(engine, tipo, usuario, descripcion, trabajo, limpiar=None):
             estado = "OK" if resultado.get("ok", True) else "ERROR"
         except Exception as e:
             estado = "ERROR"
-            resultado = {"error": f"{type(e).__name__}: {e}"}
-            lineas.append(traceback.format_exc())
+            # Los errores de SQLAlchemy incluyen la consulta con sus parámetros (¡datos reales!): se muestra solo la causa.
+            causa = getattr(e, "orig", None) or e
+            resultado = {"error": f"{type(causa).__name__}: {str(causa).strip().splitlines()[0][:300]}"}
+            lineas.append(f"{type(e).__name__}: {resultado['error']}")
+            lineas.append("\n".join(traceback.format_exc().splitlines()[-12:])[:1500])
         finally:
             if limpiar:
                 try:
