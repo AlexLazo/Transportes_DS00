@@ -294,6 +294,19 @@ importaciones = Table(
     Column("resumen", Text),
 )
 
+tareas = Table(
+    "tareas", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("tipo", String(20), nullable=False),     # IMPORTAR | RESTAURAR
+    Column("estado", String(10), nullable=False),   # CORRIENDO | OK | ERROR
+    Column("usuario", String(60)),
+    Column("creado_en", DateTime, nullable=False),
+    Column("fin", DateTime),
+    Column("descripcion", String(200)),
+    Column("log", Text),
+    Column("resumen", Text),                        # JSON con el resultado (se muestra en pantalla)
+)
+
 # ───────────── Capa 2: propios de la app ─────────────
 
 usuarios = Table(

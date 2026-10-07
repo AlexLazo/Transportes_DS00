@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf with context %}
+{% block title %}Cargar archivos{% endblock %}
+{% block body %}
+<h1>Cargar archivos</h1>
+<p class="muted">Sube aquí los Excel del mes o un respaldo. La app los reconoce y los procesa sola; no hace falta usar la terminal.</p>
+
+{% if en_curso %}
+<div class="flash warn">Hay un proceso en curso. <a href="{{ url_for('web.tarea', tid=en_curso.id) }}">Ver cómo va</a>. Hasta que termine no se pueden subir más archivos.</div>
+{% endif %}
+
+<div class="grid2" style="grid-template-columns:1fr 1fr">
+  <div class="card">
+    <h3 style="margin-top:0">1 · Subir Excel</h3>
+    <form method="post" action="{{ url_for('web.cargar_excel') }}" enctype="multipart/form-data" id="f-excel">
+      {{ csrf() }}
+      <input type="file" name="archivos" id="archivos" accept=".xlsx,.xlsm" multiple required style="width:100%">
+      <p class="muted small" id="resumen-archivos" style="margin:.4rem 0">Puedes elegir varios a la vez (máximo 60).</p>
+      <button class="btn primary" id="b-excel" {{ 'disabled' if en_curso }}>Subir y procesar</button>
+    </form>
+    <p class="small muted" style="margin-bottom:0">La app reconoce por su contenido:</p>
+    <ul class="ejemplos">
+      <li><strong>Base diaria</strong> («dd-mm-aaaa BASE DE DETALLE DE CLIENTES…»)</li>
+      <li><strong>Excepciones / dummys</strong> del mes y <strong>Ausentismos</strong> del mes</li>
+      <li><strong>Rutas fijas</strong> del mes («Copia de Rutas fijas …»)</li>
+      <li><strong>Cargas - AJ</strong> de la supervisora</li>
+    </ul>
+    <p class="small muted" style="margin-bottom:0">Si subes un archivo que ya estaba, se ignora. Si subes una versión corregida, reemplaza a la anterior.
+      Las justificaciones y evidencias nunca se tocan.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2 · Restaurar un respaldo (.zip)</h3>
+    <p class="small muted">Sirve para pasar a esta base todo lo que tenías en otra: datos, justificaciones, evidencias y usuarios.
+      <strong>Reemplaza lo que hay ahora</strong> y tendrás que volver a iniciar sesión con los usuarios del respaldo.
+      Si dudas, antes <a href="{{ url_for('web.respaldos') }}">descarga un respaldo de lo actual</a>.</p>
+    <form method="post" action="{{ url_for('web.cargar_respaldo') }}" enctype="multipart/form-data" class="form-row">
+      {{ csrf() }}
+      <input type="file" name="respaldo" accept=".zip" required>
+      <div><label for="confirmar" class="small">Para confirmar, escribe <strong>REEMPLAZAR</strong></label>
+        <input type="text" id="confirmar" name="confirmar" autocomplete="off" required placeholder="REEMPLAZAR"></div>
+      <button class="btn danger" {{ 'disabled' if en_curso }}>Restaurar respaldo</button>
+    </form>
+  </div>
+</div>
+
+<h2>Lo que hay cargado</h2>
+<table><thead><tr><th>Tipo de archivo</th><th class="num">Archivos vigentes</th><th>Última carga</th></tr></thead><tbody>
+{% for t in por_tipo %}<tr><td>{{ {'DIARIO':'Base diaria','EXCEPCIONES':'Excepciones / dummys','AUSENTISMOS':'Ausentismos','RUTAS_FIJAS':'Rutas fijas','CARGAS_AJ':'Cargas AJ'}.get(t.tipo, t.tipo) }}</td>
+  <td class="num">{{ t.n }}</td><td class="nowrap">{{ t.ultima.strftime('%d/%m/%Y %H:%M') if t.ultima else '—' }}</td></tr>
+{% else %}<tr><td colspan="3" class="muted">Todavía no hay nada cargado.</td></tr>{% endfor %}
+</tbody></table>
+<p class="small"><a href="{{ url_for('web.archivos') }}">Ver el detalle archivo por archivo →</a></p>
+
+<h2>Cargas recientes</h2>
+<table><thead><tr><th>#</th><th>Cuándo</th><th>Qué</th><th>Quién</th><th>Estado</th><th></th></tr></thead><tbody>
+{% for t in recientes %}<tr><td>{{ t.id }}</td><td class="nowrap">{{ t.creado_en.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ t.descripcion }}</td><td>{{ t.usuario or '—' }}</td>
+  <td><span class="tag {{ {'OK':'ok','ERROR':'bad','CORRIENDO':'warn'}[t.estado] }}">{{ {'OK':'Listo','ERROR':'Con error','CORRIENDO':'En curso'}[t.estado] }}</span></td>
+  <td><a class="btn sm" href="{{ url_for('web.tarea', tid=t.id) }}">Ver</a></td></tr>
+{% else %}<tr><td colspan="6" class="muted">Aún no se ha cargado nada desde aquí.</td></tr>{% endfor %}
+</tbody></table>
+
+<script>
+  var inp = document.getElementById('archivos'), res = document.getElementById('resumen-archivos');
+  inp.addEventListener('change', function () {
+    var mb = Array.prototype.reduce.call(inp.files, function (s, f) { return s + f.size; }, 0) / 1048576;
+    res.textContent = inp.files.length + ' archivo(s) · ' + mb.toFixed(1) + ' MB' + (inp.files.length > 60 ? ' — son demasiados, sube máximo 60 por vez' : '');
+  });
+  document.getElementById('f-excel').addEventListener('submit', function () {
+    var b = document.getElementById('b-excel'); b.disabled = true; b.textContent = 'Subiendo… no cierres esta página';
+  });
+</script>
+{% endblock %}

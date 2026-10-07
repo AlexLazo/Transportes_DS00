@@ -4,14 +4,22 @@ import io
 import json
 import os
 import secrets
+import shutil
+import tempfile
 import time
+import zipfile
 from datetime import date, datetime, timedelta
 
-from flask import (Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for)
+from pathlib import Path
+
+from flask import (Blueprint, Response, abort, flash, jsonify, redirect, render_template, request, session,
+                   url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .. import respaldo
-from . import core
+from ..importador.importar import _hash as _hash_archivo, importar_archivos
+from ..respaldo import ErrorRespaldo
+from . import core, tareas
 from .core import execute, log_accion, one, requiere, rows, scalar
 
 
@@ -1200,3 +1208,171 @@ def respaldo_descargar():
                                               filas=sum(t["filas"] for t in manifest["tablas"].values())))
     nombre = f"respaldo_transportes_{datetime.now():%Y%m%d_%H%M}{'_app' if solo_app else ''}.zip"
     return Response(datos, mimetype="application/zip", headers={"Content-Disposition": f"attachment; filename={nombre}"})
+
+
+# ───────────── cargar archivos (Excel y respaldos) desde la web ─────────────
+
+EXT_EXCEL = (".xlsx", ".xlsm")
+MAX_ARCHIVOS = 60
+MAX_BYTES_EXCEL = 40 * 1024 * 1024
+MAX_BYTES_UNCOMPRIMIDO = 400 * 1024 * 1024
+
+
+def _nombre_seguro(nombre):
+    """Conserva espacios y acentos (el nombre ayuda a reconocer el tipo de archivo) pero sin rutas ni caracteres raros."""
+    n = (nombre or "").replace("\\", "/").split("/")[-1].strip()
+    return "".join(ch for ch in n if ch >= " " and ch not in '<>:"|?*')[:200]
+
+
+def _zip_razonable(ruta):
+    """Un .xlsx/.zip válido y que no se expanda a un tamaño absurdo (protección contra «zip bombs»)."""
+    try:
+        with zipfile.ZipFile(ruta) as z:
+            return sum(i.file_size for i in z.infolist()) <= MAX_BYTES_UNCOMPRIMIDO
+    except zipfile.BadZipFile:
+        return False
+
+
+@bp.route("/cargar")
+@requiere("admin")
+def cargar():
+    tareas.expirar_viejas(core.engine())
+    return render_template(
+        "cargar.html", en_curso=tareas.en_curso(core.engine()),
+        recientes=rows("SELECT id, tipo, estado, usuario, creado_en, fin, descripcion FROM tareas ORDER BY id DESC LIMIT 10"),
+        por_tipo=rows("SELECT tipo, COUNT(*) AS n, MAX(importado_en) AS ultima FROM archivos WHERE estado = 'OK' GROUP BY tipo ORDER BY tipo"))
+
+
+@bp.route("/cargar/excel", methods=["POST"])
+@requiere("admin")
+def cargar_excel():
+    if tareas.en_curso(core.engine()):
+        flash("Hay otro proceso en curso. Espera a que termine para subir más archivos.", "error")
+        return redirect(url_for("web.cargar"))
+    subidos = [f for f in request.files.getlist("archivos") if f and f.filename]
+    if not subidos:
+        flash("Elige al menos un archivo Excel.", "error")
+        return redirect(url_for("web.cargar"))
+    if len(subidos) > MAX_ARCHIVOS:
+        flash(f"Sube máximo {MAX_ARCHIVOS} archivos por vez (elegiste {len(subidos)}).", "error")
+        return redirect(url_for("web.cargar"))
+    raiz = tempfile.mkdtemp(prefix="subida_")
+    lista, rechazados = [], []
+    for i, f in enumerate(subidos):
+        nombre = _nombre_seguro(f.filename)
+        if not nombre.lower().endswith(EXT_EXCEL):
+            rechazados.append(f"{nombre or '(sin nombre)'}: no es un Excel (.xlsx)")
+            continue
+        carpeta = Path(raiz) / str(i)
+        carpeta.mkdir()
+        destino = carpeta / nombre
+        f.save(destino)
+        with open(destino, "rb") as fh:
+            firma = fh.read(4)
+        if destino.stat().st_size > MAX_BYTES_EXCEL:
+            rechazados.append(f"{nombre}: pesa más de {MAX_BYTES_EXCEL // 1048576} MB")
+        elif firma != b"PK\x03\x04" or not _zip_razonable(destino):
+            rechazados.append(f"{nombre}: el archivo está dañado o no es un Excel válido")
+        else:
+            lista.append((destino, f"subidos/{_hash_archivo(destino)[:10]}/{nombre}"))
+    if rechazados:
+        flash("No se subieron: " + " · ".join(rechazados), "error")
+    if not lista:
+        shutil.rmtree(raiz, ignore_errors=True)
+        return redirect(url_for("web.cargar"))
+    engine = core.engine()
+
+    def trabajo(log):
+        ok, resumen = importar_archivos(lista, engine, log=log, origen="web")
+        return dict(resumen, ok=ok)
+
+    tid = tareas.lanzar(engine, "IMPORTAR", core.usuario_actual()["usuario"], f"{len(lista)} archivo(s) Excel",
+                        trabajo, tareas.borrar_carpeta(raiz))
+    log_accion("subir_excel", "tarea", tid, dict(cantidad=len(lista), nombres=[p.name for p, _ in lista][:20]))
+    return redirect(url_for("web.tarea", tid=tid))
+
+
+def _guardar_zip(campo="respaldo"):
+    """Guarda el .zip subido en una carpeta temporal y lo verifica. Devuelve (raiz, ruta, manifest) o lanza ErrorRespaldo."""
+    f = request.files.get(campo)
+    if not f or not f.filename or not f.filename.lower().endswith(".zip"):
+        raise ErrorRespaldo("Elige el archivo .zip del respaldo.")
+    raiz = tempfile.mkdtemp(prefix="respaldo_")
+    destino = Path(raiz) / "respaldo.zip"
+    f.save(destino)
+    try:
+        return raiz, str(destino), respaldo.verificar(str(destino))
+    except ErrorRespaldo:
+        shutil.rmtree(raiz, ignore_errors=True)
+        raise
+
+
+@bp.route("/cargar/respaldo", methods=["POST"])
+@requiere("admin")
+def cargar_respaldo():
+    if tareas.en_curso(core.engine()):
+        flash("Hay otro proceso en curso. Espera a que termine.", "error")
+        return redirect(url_for("web.cargar"))
+    if request.form.get("confirmar", "").strip().upper() != "REEMPLAZAR":
+        flash("Para restaurar escribe REEMPLAZAR en la casilla de confirmación: se sustituirán los datos actuales.", "error")
+        return redirect(url_for("web.cargar"))
+    try:
+        raiz, ruta, manifest = _guardar_zip()
+    except ErrorRespaldo as e:
+        flash(str(e), "error")
+        return redirect(url_for("web.cargar"))
+    engine = core.engine()
+    log_accion("restaurar_respaldo", "base", None, dict(alcance=manifest["alcance"], creado=manifest["creado_en"],
+                                                        archivo=request.files["respaldo"].filename))
+
+    def trabajo(log):
+        log(f"Respaldo verificado ({manifest['alcance']}, creado {manifest['creado_en']}). Restaurando…")
+        respaldo.restaurar(engine, ruta, reemplazar=True, log=log)
+        return dict(ok=True, alcance=manifest["alcance"], creado=manifest["creado_en"],
+                    tablas={t: i["filas"] for t, i in manifest["tablas"].items()})
+
+    tid = tareas.lanzar(engine, "RESTAURAR", core.usuario_actual()["usuario"],
+                        f"Respaldo {manifest['alcance']} del {manifest['creado_en'][:16]}", trabajo,
+                        tareas.borrar_carpeta(raiz))
+    return redirect(url_for("web.tarea", tid=tid))
+
+
+@bp.route("/setup/restaurar", methods=["POST"])
+def setup_restaurar():
+    """Primer uso: en lugar de crear un administrador, restaura un respaldo (que ya trae los usuarios)."""
+    if scalar("SELECT COUNT(*) FROM usuarios"):
+        return redirect(url_for("web.login"))
+    token = os.environ.get("SETUP_TOKEN", "")
+    if en_railway() and not token:
+        abort(503, "Falta definir la variable SETUP_TOKEN en Railway.")
+    if token and not secrets.compare_digest(request.form.get("token", ""), token):
+        abort(404)
+    try:
+        raiz, ruta, manifest = _guardar_zip()
+    except ErrorRespaldo as e:
+        flash(str(e), "error")
+        return redirect(url_for("web.setup", token=request.form.get("token", "")))
+    try:
+        respaldo.restaurar(core.engine(), ruta, reemplazar=False, log=lambda *_: None)
+    except ErrorRespaldo as e:
+        flash(str(e), "error")
+        return redirect(url_for("web.setup", token=request.form.get("token", "")))
+    finally:
+        shutil.rmtree(raiz, ignore_errors=True)
+    flash("Respaldo restaurado. Inicia sesión con el usuario y la contraseña que tenías.", "ok")
+    return redirect(url_for("web.login"))
+
+
+@bp.route("/tareas/<int:tid>")
+@requiere("admin")
+def tarea(tid):
+    tareas.expirar_viejas(core.engine())
+    t = one("SELECT * FROM tareas WHERE id = :i", i=tid) or abort(404)
+    return render_template("tarea.html", t=t, r=json.loads(t["resumen"]) if t["resumen"] else {})
+
+
+@bp.route("/tareas/<int:tid>.json")
+@requiere("admin")
+def tarea_json(tid):
+    t = one("SELECT estado, log FROM tareas WHERE id = :i", i=tid) or abort(404)
+    return jsonify(estado=t["estado"], log=t["log"] or "")

@@ -23,6 +23,7 @@ from . import db
 FORMATO = 1
 TABLAS_APP = ("usuarios", "motivos", "justificaciones", "evidencias", "dias_config", "cierres", "bitacora")
 LOTE = 1000
+EXCLUIDAS = ("tareas",)   # estado operativo de procesos en curso: no se respalda ni se pisa al restaurar
 
 
 class ErrorRespaldo(Exception):
@@ -31,7 +32,8 @@ class ErrorRespaldo(Exception):
 
 def _tablas(solo_app: bool):
     """Tablas en orden de dependencias (las referenciadas primero)."""
-    return [t for t in db.metadata.sorted_tables if not solo_app or t.name in TABLAS_APP]
+    return [t for t in db.metadata.sorted_tables
+            if t.name not in EXCLUIDAS and (not solo_app or t.name in TABLAS_APP)]
 
 
 def _a_json(tabla, fila):
@@ -123,6 +125,7 @@ def restaurar(engine, origen, reemplazar: bool = False, log=print) -> dict:
     solo_app = manifest["alcance"] == "solo_app"
     tablas = [t for t in _tablas(solo_app) if t.name in manifest["tablas"]]
     ignorar = {"motivos"}                 # el catálogo inicial lo siembra init_db; se reemplaza con el del respaldo
+    avisos = []
 
     with engine.begin() as con:
         con_datos = [t.name for t in tablas if t.name not in ignorar and _con_datos(con, t)]
@@ -144,7 +147,9 @@ def restaurar(engine, origen, reemplazar: bool = False, log=print) -> dict:
                 if lote:
                     con.execute(insert(t), lote)
                     n += len(lote)
-                log(f"  {t.name}: {n} filas")
+                # El aviso se emite al terminar: si `log` escribe en la base (como hace la pantalla de carga) mientras
+                # esta transacción sigue abierta, SQLite —un solo escritor a la vez— se bloquea esperando.
+                avisos.append(f"  {t.name}: {n} filas")
         if engine.dialect.name == "postgresql":   # 5) que los autoincrementales sigan después del último id
             for t in tablas:
                 if "id" in t.c:
@@ -152,6 +157,8 @@ def restaurar(engine, origen, reemplazar: bool = False, log=print) -> dict:
                         f"SELECT setval(pg_get_serial_sequence('\"{t.name}\"', 'id'), "
                         f"COALESCE((SELECT MAX(id) FROM \"{t.name}\"), 1), "
                         f"(SELECT MAX(id) IS NOT NULL FROM \"{t.name}\"))"))
+    for a in avisos:
+        log(a)
     with engine.connect() as con:         # 6) comprobación final contra el manifest
         for t in tablas:
             n = con.execute(select(func.count()).select_from(t)).scalar()

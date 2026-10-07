@@ -44,6 +44,18 @@ y marca el otro como DUPLICADO, con el motivo, en **Archivos importados**.
 Para los meses sin archivo oficial de rutas (enero–julio) la app usa las rutas marcadas FIJA en el Excel diario.
 Cuando subas el archivo oficial de un mes, el siguiente `importar_local.py` lo adopta solo.
 
+## Cargar datos desde la app (sin terminal)
+Con sesión de administrador, en **Cargar archivos**:
+- **Subir Excel**: elige uno o varios (hasta 60 por vez) y la app reconoce cada tipo por su contenido (base diaria, Excepciones,
+  Ausentismos, Rutas fijas, Cargas AJ), los procesa y muestra qué hizo con cada uno. Reenviar un archivo que ya estaba no duplica
+  nada y una versión corregida reemplaza a la anterior. Las justificaciones y evidencias nunca se tocan.
+- **Restaurar respaldo (.zip)**: reemplaza los datos actuales por los del respaldo (pide escribir REEMPLAZAR). Después hay que volver a
+  entrar con los usuarios del respaldo.
+- **Primer uso en una instalación nueva** (por ejemplo Railway): la pantalla `/setup?token=…` permite subir el respaldo directamente y
+  entrar con el usuario de siempre, sin crear uno nuevo.
+
+La terminal (`importar_local.py`, `respaldo.py`) sigue disponible, pero ya no es necesaria.
+
 ## Despliegue en Railway
 
 1. Sube este proyecto a un repositorio **privado** de GitHub. El `.gitignore` ya excluye los Excel, la base y claves:
@@ -54,17 +66,9 @@ Cuando subas el archivo oficial de un mes, el siguiente `importar_local.py` lo a
    - `SECRET_KEY` = una cadena larga y aleatoria (`python -c "import secrets; print(secrets.token_hex(32))"`)
    - `SETUP_TOKEN` = otra cadena aleatoria (protege la creación del primer administrador, porque la URL es pública)
 4. Cuando termine el despliegue abre `https://<tu-dominio>/setup?token=<SETUP_TOKEN>` y crea el administrador.
-5. Sube lo que ya tienes. Los Excel nunca salen de tu máquina; solo viajan datos ya procesados:
-   ```bash
-   pip install psycopg2-binary
-   python respaldo.py exportar                                   # respaldo completo de tu base local
-   python respaldo.py restaurar respaldos/<archivo>.zip --db "<URL pública de PostgreSQL>"
-   ```
-   Eso copia **todo** (justificaciones, evidencias, usuarios, cierres y los datos importados). Hazlo **antes** de crear el
-   administrador en Railway: la restauración se niega a pisar una base con datos salvo que agregues `--reemplazar`.
-   Si restauras, tus usuarios ya existen y no necesitas `/setup`.
-   La URL pública está en Railway → PostgreSQL → *Connect → Public Network* (`DATABASE_PUBLIC_URL`).
-6. Cuando haya Excel nuevos: `python importar_local.py --db "<URL pública de PostgreSQL>"` (solo procesa lo nuevo y nunca toca las justificaciones).
+5. Sube lo que ya tienes, sin terminal: abre `https://<tu-dominio>/setup?token=<SETUP_TOKEN>` y en «Opción 1» sube el respaldo `.zip`
+   que generaste en tu PC (**Respaldos → Descargar respaldo completo**, o `respaldar.bat`). Entras con tu usuario de siempre.
+6. Cuando haya Excel nuevos: **Cargar archivos → Subir Excel**.
 
 ## Que los datos no se pierdan en cada redeploy
 - **La base vive en PostgreSQL, no en el servicio web.** Railway guarda PostgreSQL en un volumen persistente: un redeploy del servicio web

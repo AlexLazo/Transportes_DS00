@@ -3,15 +3,27 @@
 {% block anon %}
 <div class="login">
   <h1>Primer uso</h1>
-  <p class="muted">Crea el usuario administrador. Después podrás agregar a los demás desde «Usuarios».</p>
+  <p class="muted">Elige cómo empezar.</p>
+
+  <form method="post" action="{{ url_for('web.setup_restaurar') }}" enctype="multipart/form-data" class="card form-row" style="margin-bottom:1rem">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="token" value="{{ request.args.get('token', '') }}">
+    <strong>Opción 1 · Ya usaba la app en otra computadora</strong>
+    <span class="muted small">Sube el respaldo (.zip) y se restaura todo: datos, justificaciones, evidencias y usuarios. Después inicias sesión con tu usuario de siempre; no hace falta crear uno nuevo.</span>
+    <input type="file" name="respaldo" accept=".zip" required>
+    <button class="btn primary">Restaurar respaldo</button>
+  </form>
+
   <form method="post" class="card form-row">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <input type="hidden" name="token" value="{{ request.args.get('token', '') }}">
+    <strong>Opción 2 · Empezar desde cero</strong>
+    <span class="muted small">Crea el administrador. Después subes los Excel desde «Cargar archivos».</span>
     <div><label for="nombre">Nombre completo</label><input id="nombre" name="nombre" type="text" required style="width:100%"></div>
     <div><label for="usuario">Usuario</label><input id="usuario" name="usuario" type="text" autocomplete="username" required style="width:100%"></div>
     <div><label for="clave">Contraseña (mínimo 10 caracteres)</label><input id="clave" name="clave" type="password" autocomplete="new-password" required style="width:100%"></div>
     <div><label for="clave2">Repite la contraseña</label><input id="clave2" name="clave2" type="password" autocomplete="new-password" required style="width:100%"></div>
-    <button class="btn primary">Crear administrador</button>
+    <button class="btn">Crear administrador</button>
   </form>
 </div>
 {% endblock %}
